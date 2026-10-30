@@ -1,0 +1,5 @@
+minApiVersion=102
+targetApiVersion=102
+staticScope=false
+exceptionMode=protective
+description=上滑回桌面时改为进入第三方桌面（默认 Nova Launcher），绕过荣耀系统禁止第三方桌面的限制。支持任意桌面，可配置。

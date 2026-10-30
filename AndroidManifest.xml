@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.dsh.magichome"
+    android:versionCode="30"
+    android:versionName="2.4.0">
+
+    <uses-sdk
+        android:minSdkVersion="29"
+        android:targetSdkVersion="34" />
+
+    <!-- 用于枚举本机所有桌面应用，供设置页选择 -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
+    <application
+        android:label="MagicHome"
+        android:icon="@android:drawable/sym_def_app_icon"
+        android:allowBackup="false"
+        android:hasCode="true">
+
+        <activity
+            android:name=".SettingsActivity"
+            android:label="MagicHome 目标桌面"
+            android:exported="true"
+            android:theme="@android:style/Theme.DeviceDefault.Light.DarkActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <provider
+            android:name=".SettingsProvider"
+            android:authorities="com.dsh.magichome.settings"
+            android:exported="true"
+            android:enabled="true" />
+    </application>
+</manifest>

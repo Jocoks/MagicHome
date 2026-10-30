@@ -1,0 +1,13 @@
+build/
+*.apk
+*.idsig
+*.dex
+*.jar
+*.aar
+*.zip
+tools/deb/
+tools/platform-*
+tools/android.jar
+tools/honorhook.apk
+nova_base.apk
+gh_token.json
