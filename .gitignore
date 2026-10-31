@@ -11,3 +11,6 @@ tools/android.jar
 tools/honorhook.apk
 nova_base.apk
 gh_token.json
+
+.work/
+tools/aarx/

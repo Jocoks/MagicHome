@@ -324,6 +324,99 @@ public class HookEntry extends XposedModule {
 
         hookLauncherStateMachine(cl);
         hookQuickstep(cl);
+        armRecentsAppInfoHook(cl);
+    }
+
+    /** 最近任务卡片顶栏注入「应用信息」按钮。 */
+    private void armRecentsAppInfoHook(ClassLoader cl) {
+        String headerCls = "com.hihonor.android.launcher.quickstep.views.TaskViewHeader";
+        try {
+            Class<?> c = Class.forName(headerCls, false, cl);
+            Method m = c.getDeclaredMethod("onFinishInflate");
+            hook(m)
+                    .setId("magichome-appinfo-button")
+                    .setExceptionMode(ExceptionMode.PROTECTIVE)
+                    .intercept(new Hooker() {
+                        @Override
+                        public Object intercept(Chain chain) throws Throwable {
+                            Object out = chain.proceed();
+                            try {
+                                Object self = chain.getThisObject();
+                                if (self instanceof android.view.ViewGroup) {
+                                    RecentsAppInfo.attach((android.view.ViewGroup) self);
+                                }
+                            } catch (Throwable t) {
+                                log(Log.WARN, TAG, "appinfo attach failed: " + t);
+                            }
+                            return out;
+                        }
+                    });
+            log(Log.INFO, TAG, "appinfo button hook installed on " + headerCls);
+            armTaskViewTouchHook(cl);
+        } catch (Throwable t) {
+            log(Log.WARN, TAG, "appinfo button hook failed: " + t);
+        }
+    }
+
+    /** 把「应用信息」按钮的触摸从 TaskView 手里拦过来。 */
+    private void armTaskViewTouchHook(ClassLoader cl) {
+        String[] classes = {
+                "com.android.quickstep.views.TaskView",
+                "com.android.quickstep.views.BaseTaskView",
+        };
+        for (String cn : classes) {
+            try {
+                Class<?> c = Class.forName(cn, false, cl);
+                Method m = null;
+                try {
+                    m = c.getDeclaredMethod("dispatchTouchEvent", MotionEvent.class);
+                } catch (NoSuchMethodException e) {
+                    continue;
+                }
+                hook(m)
+                        .setId("magichome-appinfo-touch-" + c.getSimpleName())
+                        .setExceptionMode(ExceptionMode.PROTECTIVE)
+                        .intercept(new Hooker() {
+                            @Override
+                            public Object intercept(Chain chain) throws Throwable {
+                                try {
+                                    Object self = chain.getThisObject();
+                                    Object a = chain.getArg(0);
+                                    if (self instanceof android.view.View && a instanceof MotionEvent) {
+                                        android.view.View v = (android.view.View) self;
+                                        Object task = fieldValueOf(self, "mTask");
+                                        if (RecentsAppInfo.handleTouch(v, (MotionEvent) a, task)) {
+                                            return Boolean.TRUE;
+                                        }
+                                    }
+                                } catch (Throwable t) {
+                                    log(Log.WARN, TAG, "appinfo touch hook failed: " + t);
+                                }
+                                return chain.proceed();
+                            }
+                        });
+                log(Log.INFO, TAG, "appinfo touch hook installed on " + cn);
+                return;
+            } catch (Throwable t) {
+                log(Log.WARN, TAG, "appinfo touch hook failed on " + cn + ": " + t);
+            }
+        }
+    }
+
+    private static Object fieldValueOf(Object o, String name) {
+        Class<?> c = o == null ? null : o.getClass();
+        while (c != null && c != Object.class) {
+            try {
+                Field f = c.getDeclaredField(name);
+                f.setAccessible(true);
+                return f.get(o);
+            } catch (NoSuchFieldException e) {
+                c = c.getSuperclass();
+            } catch (Throwable t) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private void hookLauncherStateMachine(ClassLoader cl) {
@@ -398,6 +491,9 @@ public class HookEntry extends XposedModule {
         if (DEBUG) {
             log(Log.INFO, TAG, "state -> " + name);
         }
+        if (isOverviewStateName(name)) {
+            armOverviewProbe();
+        }
         Activity act = sCurrentLauncherAct;
         if (isOverviewStateName(name) || name.contains("Background")) {
             cancelPendingBounce("non-home state: " + name);
@@ -409,6 +505,30 @@ public class HookEntry extends XposedModule {
                 scheduleBounce(act, FALLBACK_DELAY_MS, "state=" + name + "+homeGesture");
             }
         }
+    }
+
+    private static final boolean PROBE_OVERVIEW = false;
+    private static long sLastOverviewProbeAt;
+
+    private void armOverviewProbe() {
+        if (!PROBE_OVERVIEW) {
+            return;
+        }
+        long now = SystemClock.uptimeMillis();
+        if (now - sLastOverviewProbeAt < 3000L) {
+            return;
+        }
+        sLastOverviewProbeAt = now;
+        mHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                Activity act = sCurrentLauncherAct;
+                if (act == null || act.isFinishing()) {
+                    return;
+                }
+                Probe.dumpOverview(act);
+            }
+        }, 350L);
     }
 
     private void scheduleBounce(Activity act, long delayMs, String why) {
