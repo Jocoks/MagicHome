@@ -153,6 +153,7 @@ kill -9 $(pidof com.hihonor.android.launcher)
 
 | 版本 | 变更 |
 |---|---|
+| 2.7.0 | **改目标页为「应用信息」**：机主要的是设置里的「应用信息」页（卸载/强行停止/权限/存储…），于是长按改为 `Settings.ACTION_APPLICATION_DETAILS_SETTINGS` + `data:package:<pkg>`（落到 `com.android.settings.applications.InstalledAppDetails`），2.6.0 的 `MANAGE_APP_PERMISSIONS` 只留作回退 |
 | 2.6.0 | **长按卡片 → 权限设置**（机主反馈图标太丑，去掉 2.5.0 的按钮）：不再注入任何视图，改为在 `TaskView#dispatchTouchEvent` 里跟踪手势——原地按住 ≥460ms、位移不超过 touchSlop 就打开该任务的权限页，触发后吞掉后续 MOVE/UP（避免又变成「打开应用」）；卡片顶栏分屏/锁定按钮所在区域不接管。实测：长按 460ms 进「XX 权限」页、轻点仍正常打开应用 |
 | 2.5.0 | **最近任务卡片「应用信息」按钮**（已废弃，见 2.6.0）：钩 `TaskViewHeader#onFinishInflate` 注入圆形按钮；触摸在 `TaskView#dispatchTouchEvent` 拦下，读 `TaskView.mTask` 的顶层 ComponentName 后 `startActivity(android.intent.action.MANAGE_APP_PERMISSIONS --es android.intent.extra.PACKAGE_NAME <pkg>)` 打开权限页 |
 | 2.4.0 | **项目改名 MagicHome**：包名 `com.dsh.novahome` → `com.dsh.magichome`，配置 provider authority `com.dsh.magichome.settings`，SharedPreferences `magichome`，钩子 id 前缀 `magichome-`。**升级要卸载旧版**（包名不同，配置不迁移；装好后到设置页重选一次目标桌面）。功能与 2.3.0 一致 |
@@ -348,7 +349,7 @@ grep -E "target launcher =|bounced ->" /data/adb/lspd/log/modules_*.log | tail
 
 ---
 
-## 13. 2.6.0 长按最近任务卡片 → 打开该应用的权限设置
+## 13. 2.6.0/2.7.0 长按最近任务卡片 → 打开该应用的「应用信息」页
 
 机主最初要的是「卡片顶栏放个应用信息按钮」，2.5.0 做完后反馈「图标太丑」，于是改成
 **长按卡片**触发（2.6.0 起不再注入任何按钮视图）。
@@ -367,21 +368,21 @@ grep -E "target launcher =|bounced ->" /data/adb/lspd/log/modules_*.log | tail
 
 3. **避开顶栏按钮**：DOWN 落在卡片 `button_group`（分屏 / 锁定）范围内时不接管。
 
-4. **认应用 + 开权限页**：从被长按的 `TaskView` 读 `mTask`，依次尝试
+4. **认应用 + 开「应用信息」页**：从被长按的 `TaskView` 读 `mTask`，依次尝试
    `getTopComponent()` / `getComponent()` / `getBaseComponent()`、字段
    `component|mComponent|baseComponent|topComponent`、`getBaseIntent()` / `getIntent()`，
-   取 `ComponentName.getPackageName()`；再 `startActivity(android.intent.action.MANAGE_APP_PERMISSIONS`
-   + `android.intent.extra.PACKAGE_NAME <pkg>)`。本机该 action 由
-   `com.android.permissioncontroller/.permission.ui.ManagePermissionsActivity` 应答，
-   直达「XX 权限」页；异常时回退 `Settings.ACTION_APPLICATION_DETAILS_SETTINGS`。
+   取 `ComponentName.getPackageName()`；再 `startActivity(Settings.ACTION_APPLICATION_DETAILS_SETTINGS`
+   + `data "package:<pkg>")`，落到设置里的「应用信息」页
+   （`com.android.settings.applications.InstalledAppDetails`：卸载 / 强行停止 / 权限 / 存储…）。
+   2.6.0 用的 `android.intent.action.MANAGE_APP_PERMISSIONS`（直达「XX 权限」页）保留为回退。
 
-验证（本机，versionCode 32 / 2.6.0）：
+验证（本机，versionCode 33 / 2.7.0）：
 
 ```
 # 长按 900ms（卡片内空白处，改由 input swipe 同点模拟）
 I MagicHome: [appinfo] long press (460ms) task=[id=3873 windowingMode=1 ...] DeepCode pkg=com.dsharnessmobile.shell
-I MagicHome: [appinfo] open permissions page for com.dsharnessmobile.shell
-mCurrentFocus=... com.android.permissioncontroller/...permission.ui.ManagePermissionsActivity   # 「DeepCode 权限」页
+I MagicHome: [appinfo] open app info page for com.dsharnessmobile.shell
+mCurrentFocus=... com.android.settings/com.android.settings.applications.InstalledAppDetails   # 「DeepCode 应用信息」页
 # 对照：轻点同一位置 → 仍正常打开应用
 mCurrentFocus=... com.dsharnessmobile.shell/com.dsharnessmobile.shell.MainActivity
 ```

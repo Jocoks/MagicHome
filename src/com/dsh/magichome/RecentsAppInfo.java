@@ -18,7 +18,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 /**
- * 最近任务卡片「长按 → 应用权限设置」。
+ * 最近任务卡片「长按 → 应用信息 / 权限设置」。
  *
  * 荣耀最近任务的卡片是 com.hihonor.android.launcher.quickstep.views.HnTaskView
  * （extends com.android.quickstep.views.TaskView），它的 mTask 字段是当前任务的 Task；
@@ -88,7 +88,7 @@ public final class RecentsAppInfo {
                         log("long press (" + (SystemClock.uptimeMillis() - downAt) + "ms) task="
                                 + sDownTask + " pkg=" + pkg);
                         if (pkg != null && !pkg.isEmpty()) {
-                            openPermissions(taskView.getContext(), pkg);
+                            openAppInfo(taskView.getContext(), pkg);
                         }
                     }
                 };
@@ -222,26 +222,26 @@ public final class RecentsAppInfo {
         return null;
     }
 
-    /** 优先直达「权限」页；不行再退到「应用信息」页。 */
-    static void openPermissions(Context ctx, String pkg) {
+    /** 打开系统的「应用信息」页（InstalledAppDetailsTop）；不行再退到「权限」页。 */
+    static void openAppInfo(Context ctx, String pkg) {
+        try {
+            Intent it = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            it.setData(Uri.parse("package:" + pkg));
+            it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(it);
+            log("open app info page for " + pkg);
+            return;
+        } catch (Throwable t) {
+            log("APPLICATION_DETAILS_SETTINGS failed: " + t);
+        }
         try {
             Intent it = new Intent("android.intent.action.MANAGE_APP_PERMISSIONS");
             it.putExtra("android.intent.extra.PACKAGE_NAME", pkg);
             it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             ctx.startActivity(it);
             log("open permissions page for " + pkg);
-            return;
         } catch (Throwable t) {
             log("MANAGE_APP_PERMISSIONS failed: " + t);
-        }
-        try {
-            Intent it = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    Uri.fromParts("package", pkg, null));
-            it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            ctx.startActivity(it);
-            log("open app details page for " + pkg);
-        } catch (Throwable t) {
-            log("app details failed: " + t);
         }
     }
 
