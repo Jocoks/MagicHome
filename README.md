@@ -153,7 +153,8 @@ kill -9 $(pidof com.hihonor.android.launcher)
 
 | 版本 | 变更 |
 |---|---|
-| 2.5.0 | **最近任务卡片「应用信息」按钮**：钩 `TaskViewHeader#onFinishInflate`，在每张卡片的 `task_view_bar` 顶栏注入一个圆形信息按钮（位置取 `button_group` 右侧空白区的正中，约卡片宽度 75% 处）；触摸在 `TaskView#dispatchTouchEvent` 层拦下（卡片头部原本会把点击转发成「打开该应用」），命中后读 `TaskView.mTask` 的顶层 ComponentName，直接 `startActivity(android.intent.action.MANAGE_APP_PERMISSIONS --es android.intent.extra.PACKAGE_NAME <pkg>)` 打开该应用的**权限**页（失败回退 `ACTION_APPLICATION_DETAILS_SETTINGS`）。占位探针 `Probe.java` 默认关闭（`PROBE_OVERVIEW=false`），避免卡顿 |
+| 2.6.0 | **长按卡片 → 权限设置**（机主反馈图标太丑，去掉 2.5.0 的按钮）：不再注入任何视图，改为在 `TaskView#dispatchTouchEvent` 里跟踪手势——原地按住 ≥460ms、位移不超过 touchSlop 就打开该任务的权限页，触发后吞掉后续 MOVE/UP（避免又变成「打开应用」）；卡片顶栏分屏/锁定按钮所在区域不接管。实测：长按 460ms 进「XX 权限」页、轻点仍正常打开应用 |
+| 2.5.0 | **最近任务卡片「应用信息」按钮**（已废弃，见 2.6.0）：钩 `TaskViewHeader#onFinishInflate` 注入圆形按钮；触摸在 `TaskView#dispatchTouchEvent` 拦下，读 `TaskView.mTask` 的顶层 ComponentName 后 `startActivity(android.intent.action.MANAGE_APP_PERMISSIONS --es android.intent.extra.PACKAGE_NAME <pkg>)` 打开权限页 |
 | 2.4.0 | **项目改名 MagicHome**：包名 `com.dsh.novahome` → `com.dsh.magichome`，配置 provider authority `com.dsh.magichome.settings`，SharedPreferences `magichome`，钩子 id 前缀 `magichome-`。**升级要卸载旧版**（包名不同，配置不迁移；装好后到设置页重选一次目标桌面）。功能与 2.3.0 一致 |
 | 2.3.0 | **任意第三方桌面**：新增设置页（`SettingsActivity`）与配置 provider（`SettingsProvider`），首次进入由用户点选或输入目标桌面包名并保存，5 秒内自动生效、无需重启；跳转/手势预热/开机预热全部跟随配置。Nova 之外需该桌面有导出的 ContentProvider 才会预热，没有则跳过（只少了预热）。实测：切到荣耀桌面后上滑确实回落荣耀桌面，切回 Nova 后恢复正常 |
 | 2.2.1 | **底部边缘上滑**：按用户更正，「停在荣耀桌面时快速上滑进 Nova」只认**屏幕最底部 240px 内起手**（屏高 3104 时 y ≥ 2864）；并改从 Quickstep 手势管线 `TouchInterationManager.processGestureInputEvent` 取事件（底部边缘上滑会被系统手势接管，Activity 只收到 DOWN 后 CANCEL，原路径永远不触发）。实测：底部边缘 550px/83ms → 跳 Nova；695ms 慢拖不触发；屏幕中部 400px 快滑不触发 |
@@ -347,47 +348,46 @@ grep -E "target launcher =|bounced ->" /data/adb/lspd/log/modules_*.log | tail
 
 ---
 
-## 13. 2.5.0 最近任务卡片「应用信息」按钮
+## 13. 2.6.0 长按最近任务卡片 → 打开该应用的权限设置
 
-在「最近任务」里，每张任务卡片的顶栏右侧空白处（分屏按钮右边）会多出一个圆形信息按钮，
-点它直接打开**该应用**的权限设置页。
+机主最初要的是「卡片顶栏放个应用信息按钮」，2.5.0 做完后反馈「图标太丑」，于是改成
+**长按卡片**触发（2.6.0 起不再注入任何按钮视图）。
 
-实现要点（`RecentsAppInfo.java` + `HookEntry.armRecentsAppInfoHook`）：
+实现（`RecentsAppInfo.java` + `HookEntry.armRecentsLongPressHook`）：
 
-1. **注入位置**：荣耀 Quickstep 的卡片顶栏是
-   `com.hihonor.android.launcher.quickstep.views.TaskViewHeader`（view id `task_view_bar`），
-   里面已有 `button_group`（分屏 / 锁定）。模块在 `TaskViewHeader#onFinishInflate` 之后
-   往顶栏 `addView` 一个 `ImageButton`（tag `magichome_app_info_btn`，重复注入会跳过），
-   `rightMargin` 取 `button_group` 右边缘到卡片右边缘这段空白的中点（取不到就按 0.62×卡片宽
-   回退），所以按钮落在机主圈定的绿框位置（实测约为卡片宽度的 74%~75%）。
+1. **手势识别**：钩 `com.android.quickstep.views.TaskView#dispatchTouchEvent`（回退
+   `BaseTaskView`）。DOWN 记录坐标/时间并用 `Handler` 起一个 460ms 的定时器；
+   MOVE 位移超过 `touchSlop` 或 UP/CANCEL 就取消；定时器到期说明是「原地长按」，
+   调 `performHapticFeedback(LONG_PRESS)` 给个振动反馈，然后打开权限页。
+   LONG_PRESS_MS 取 460ms（略慢于系统 400ms），减少滑动手势误触。
 
-2. **触摸拦截**：卡片头部原本会把点击转发成「打开该应用」，按钮拿不到事件。
-   因此钩 `com.android.quickstep.views.TaskView#dispatchTouchEvent`：DOWN 落在按钮矩形内
-   就返回 true 吃掉事件，UP 时执行打开权限页，其余事件照常 `chain.proceed()`。
+2. **不破坏原有交互**：DOWN/MOVE/UP 默认都 `return false` 交给桌面处理，
+   所以轻点开应用、左右滑、拖拽都不受影响；只有长按触发之后，才把紧随其后的
+   MOVE/UP 吞掉（返回 true），避免抬手时又被当成一次点击去打开应用。
 
-3. **包名解析**：从被点的 `TaskView` 往上找到卡片，反射读 `mTask`（`Task`），
-   依次尝试 `getTopComponent()` / `getComponent()` / `getBaseComponent()` /
-   字段 `component|mComponent|baseComponent|topComponent` / `getBaseIntent()` / `getIntent()`，
-   取 `ComponentName.getPackageName()`。
+3. **避开顶栏按钮**：DOWN 落在卡片 `button_group`（分屏 / 锁定）范围内时不接管。
 
-4. **打开权限页**：`android.intent.action.MANAGE_APP_PERMISSIONS` +
-   `android.intent.extra.PACKAGE_NAME`，由 `com.android.permissioncontroller` 的
-   `ManagePermissionsActivity` 应答（本机实测直达「XX 权限」页；`android.settings.*` 同名 action
-   在本机 Settings 里解析不到）；异常时回退 `Settings.ACTION_APPLICATION_DETAILS_SETTINGS`。
+4. **认应用 + 开权限页**：从被长按的 `TaskView` 读 `mTask`，依次尝试
+   `getTopComponent()` / `getComponent()` / `getBaseComponent()`、字段
+   `component|mComponent|baseComponent|topComponent`、`getBaseIntent()` / `getIntent()`，
+   取 `ComponentName.getPackageName()`；再 `startActivity(android.intent.action.MANAGE_APP_PERMISSIONS`
+   + `android.intent.extra.PACKAGE_NAME <pkg>)`。本机该 action 由
+   `com.android.permissioncontroller/.permission.ui.ManagePermissionsActivity` 应答，
+   直达「XX 权限」页；异常时回退 `Settings.ACTION_APPLICATION_DETAILS_SETTINGS`。
 
-验证（本机，versionCode 31 / 2.5.0）：
+验证（本机，versionCode 32 / 2.6.0）：
 
 ```
-# 日志：每张卡片注入一次；点击时打印解析到的包名
-I MagicHome: [appinfo] app info button attached to TaskViewHeader
-I MagicHome: [appinfo] app info tap: task=[id=3873 windowingMode=1 ...] DeepCode pkg=com.dsharnessmobile.shell
+# 长按 900ms（卡片内空白处，改由 input swipe 同点模拟）
+I MagicHome: [appinfo] long press (460ms) task=[id=3873 windowingMode=1 ...] DeepCode pkg=com.dsharnessmobile.shell
 I MagicHome: [appinfo] open permissions page for com.dsharnessmobile.shell
-# 前台变成权限页
-mCurrentFocus=... com.android.permissioncontroller/...permission.ui.ManagePermissionsActivity
+mCurrentFocus=... com.android.permissioncontroller/...permission.ui.ManagePermissionsActivity   # 「DeepCode 权限」页
+# 对照：轻点同一位置 → 仍正常打开应用
+mCurrentFocus=... com.dsharnessmobile.shell/com.dsharnessmobile.shell.MainActivity
 ```
 
-安装方式同前（`sh build.sh` 后把 `build/MagicHome.apk` 装进设备、在 LSPosed 里保持
-`com.hihonor.android.launcher` 作用域勾选，`am force-stop com.hihonor.android.launcher` 生效）。
+安装方式同前（`sh build.sh` → 装 `build/MagicHome.apk`，LSPosed 作用域保持
+`com.hihonor.android.launcher`，改完 `am force-stop com.hihonor.android.launcher` 生效）。
 
-> 注意：`Probe.java` 的视图树探测默认关闭（`HookEntry.PROBE_OVERVIEW=false`）。
-> 一次打几百行 `Log.i` 会让最近任务界面明显卡顿，排查问题时临时打开、看完就关。
+> `Probe.java` 的视图树探测默认关闭（`HookEntry.PROBE_OVERVIEW=false`）：
+> 一次打几百行 `Log.i` 会让最近任务界面明显卡顿，排查时临时打开、看完就关。

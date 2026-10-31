@@ -324,42 +324,11 @@ public class HookEntry extends XposedModule {
 
         hookLauncherStateMachine(cl);
         hookQuickstep(cl);
-        armRecentsAppInfoHook(cl);
+        armRecentsLongPressHook(cl);
     }
 
-    /** 最近任务卡片顶栏注入「应用信息」按钮。 */
-    private void armRecentsAppInfoHook(ClassLoader cl) {
-        String headerCls = "com.hihonor.android.launcher.quickstep.views.TaskViewHeader";
-        try {
-            Class<?> c = Class.forName(headerCls, false, cl);
-            Method m = c.getDeclaredMethod("onFinishInflate");
-            hook(m)
-                    .setId("magichome-appinfo-button")
-                    .setExceptionMode(ExceptionMode.PROTECTIVE)
-                    .intercept(new Hooker() {
-                        @Override
-                        public Object intercept(Chain chain) throws Throwable {
-                            Object out = chain.proceed();
-                            try {
-                                Object self = chain.getThisObject();
-                                if (self instanceof android.view.ViewGroup) {
-                                    RecentsAppInfo.attach((android.view.ViewGroup) self);
-                                }
-                            } catch (Throwable t) {
-                                log(Log.WARN, TAG, "appinfo attach failed: " + t);
-                            }
-                            return out;
-                        }
-                    });
-            log(Log.INFO, TAG, "appinfo button hook installed on " + headerCls);
-            armTaskViewTouchHook(cl);
-        } catch (Throwable t) {
-            log(Log.WARN, TAG, "appinfo button hook failed: " + t);
-        }
-    }
-
-    /** 把「应用信息」按钮的触摸从 TaskView 手里拦过来。 */
-    private void armTaskViewTouchHook(ClassLoader cl) {
+    /** 最近任务卡片「长按 → 打开该应用的权限设置」。 */
+    private void armRecentsLongPressHook(ClassLoader cl) {
         String[] classes = {
                 "com.android.quickstep.views.TaskView",
                 "com.android.quickstep.views.BaseTaskView",
@@ -367,14 +336,14 @@ public class HookEntry extends XposedModule {
         for (String cn : classes) {
             try {
                 Class<?> c = Class.forName(cn, false, cl);
-                Method m = null;
+                Method m;
                 try {
                     m = c.getDeclaredMethod("dispatchTouchEvent", MotionEvent.class);
                 } catch (NoSuchMethodException e) {
                     continue;
                 }
                 hook(m)
-                        .setId("magichome-appinfo-touch-" + c.getSimpleName())
+                        .setId("magichome-longpress-" + c.getSimpleName())
                         .setExceptionMode(ExceptionMode.PROTECTIVE)
                         .intercept(new Hooker() {
                             @Override
@@ -390,15 +359,15 @@ public class HookEntry extends XposedModule {
                                         }
                                     }
                                 } catch (Throwable t) {
-                                    log(Log.WARN, TAG, "appinfo touch hook failed: " + t);
+                                    log(Log.WARN, TAG, "longpress handler failed: " + t);
                                 }
                                 return chain.proceed();
                             }
                         });
-                log(Log.INFO, TAG, "appinfo touch hook installed on " + cn);
+                log(Log.INFO, TAG, "recents long-press hook installed on " + cn);
                 return;
             } catch (Throwable t) {
-                log(Log.WARN, TAG, "appinfo touch hook failed on " + cn + ": " + t);
+                log(Log.WARN, TAG, "recents long-press hook failed on " + cn + ": " + t);
             }
         }
     }
