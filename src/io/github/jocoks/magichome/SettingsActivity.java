@@ -89,6 +89,13 @@ public class SettingsActivity extends Activity {
         recentsHint.setPadding(0, 0, 0, dp(4));
         root.addView(recentsHint);
 
+        TextView speedNote = new TextView(this);
+        speedNote.setText("响应速度：荣耀的转场动画会拖慢本模块，打开「设置 → 无障碍 → 关闭动画」会更快。");
+        speedNote.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        speedNote.setTextColor(0xFF9A5B00);
+        speedNote.setPadding(0, dp(16), 0, dp(4));
+        root.addView(speedNote);
+
         TextView listTitle = new TextView(this);
         listTitle.setText("本机已安装的桌面：");
         listTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);

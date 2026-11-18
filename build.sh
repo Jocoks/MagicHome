@@ -29,11 +29,13 @@ java -cp "$P/share/java/d8.jar" com.android.tools.r8.D8 \
     --lib "$TOOLS/android.jar" --min-api 29 \
     --output "$BUILD/dex" $CLASSES
 
-echo "[3/5] aapt2 link"
+echo "[3/5] aapt2 compile + link"
+"$P/bin/aapt2" compile --dir "$ROOT/res" -o "$BUILD/res.zip"
 "$P/bin/aapt2" link \
     -o "$BUILD/base.apk" \
     -I /system/framework/framework-res.apk \
-    --manifest "$ROOT/AndroidManifest.xml"
+    --manifest "$ROOT/AndroidManifest.xml" \
+    -R "$BUILD/res.zip"
 
 echo "[4/5] pack"
 python3 "$TOOLS/pack.py" "$BUILD/base.apk" "$BUILD/unsigned.apk" "$BUILD/dex/classes.dex" "$ROOT/meta"

@@ -61,9 +61,13 @@ public class HookEntry extends XposedModule {
      * 最近任务里「没点卡片、点空白处或再上滑一次」也会回桌面：
      * 这条路径既没有 HOME 手势令牌，也不会重发 onTopResumedActivityChanged
      * （桌面本来就在顶层），只能用 goToState 的「Overview -> Normal」来认。
-     * 延迟留够桌面自己那一下转场动画，避免两个动画打架。
+     * 实测（2.7.2，5 次）：从 state 变 Normal 到真正 startActivity 差 412ms，
+     * 用户感知就是「点了半天才动」。改成一帧多一点的 50ms 就发跳转，
+     * 若那一刻桌面还没退出 overview（动画未开始），再补试 3 次。
      */
-    private static final long RECENTS_EXIT_DELAY_MS = 400L;
+    private static final long RECENTS_EXIT_DELAY_MS = 50L;
+    /** recents->home 等待 overview 退出的补试次数与间隔 */
+    private static final int RECENTS_EXIT_RETRIES = 3;
     /** 刚点过任务卡片时不要接管：那是「打开这个应用」，不是「回桌面」 */
     private static final long CARD_TAP_GUARD_MS = 400L;
     /**
@@ -477,6 +481,8 @@ public class HookEntry extends XposedModule {
         }
         if (isOverviewStateName(name)) {
             armOverviewProbe();
+            // 进最近任务就静默拉起目标桌面进程，退出时跳转不用等冷启动
+            warmTargetSilently("overview");
         }
         Activity act = sCurrentLauncherAct;
         if (isOverviewStateName(name) || name.contains("Background")) {
@@ -494,7 +500,8 @@ public class HookEntry extends XposedModule {
                 }
                 log(Log.INFO, TAG, "recents exit (" + prev + " -> " + name
                         + "), bounce to target");
-                scheduleBounce(act, RECENTS_EXIT_DELAY_MS, "recents->home");
+                scheduleBounce(act, RECENTS_EXIT_DELAY_MS, "recents->home",
+                        RECENTS_EXIT_RETRIES);
                 return;
             }
             // 兜底：顶层 resumed 回调没来时再跳一次；但必须是真·上滑回桌面手势之后
@@ -535,6 +542,10 @@ public class HookEntry extends XposedModule {
     }
 
     private void scheduleBounce(Activity act, long delayMs, String why) {
+        scheduleBounce(act, delayMs, why, 0);
+    }
+
+    private void scheduleBounce(Activity act, long delayMs, String why, final int retries) {
         sCurrentLauncherAct = act;
         if (mPendingBounce != null) {
             if (delayMs >= mPendingDelay) {
@@ -560,7 +571,13 @@ public class HookEntry extends XposedModule {
                         return;
                     }
                     if (isOverviewNow(target)) {
-                        log(Log.INFO, TAG, "skip bounce: overview showing");
+                        if (retries > 0) {
+                            log(Log.INFO, TAG, "overview still showing, retry bounce ("
+                                    + retries + " left)");
+                            scheduleBounce(target, RECENTS_EXIT_DELAY_MS, reason, retries - 1);
+                        } else {
+                            log(Log.INFO, TAG, "skip bounce: overview showing");
+                        }
                         return;
                     }
                     if (!target.hasWindowFocus()) {

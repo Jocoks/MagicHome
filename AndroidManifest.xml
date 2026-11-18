@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="io.github.jocoks.magichome"
-    android:versionCode="35"
-    android:versionName="2.7.2">
+    android:versionCode="39"
+    android:versionName="2.7.4">
 
     <uses-sdk
         android:minSdkVersion="29"
@@ -13,7 +13,8 @@
 
     <application
         android:label="MagicHome"
-        android:icon="@android:drawable/sym_def_app_icon"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:hasCode="true">
 

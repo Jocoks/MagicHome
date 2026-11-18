@@ -129,8 +129,8 @@ grep MagicHome /data/adb/lspd/log/modules_*.log | tail
 | 任意 App 里快速上滑 | 约 0.25s 后落到 Nova 桌面 |
 | 上滑并停顿 | 最近任务正常停留，卡片可滑动 |
 | 最近任务里点一个 App | 进入该 App，不被 Nova 顶掉 |
-| 最近任务里点空白处 | 约 0.4s 后落到 Nova（2.7.2 起，设置页可关） |
-| 最近任务里再上滑一次 | 约 0.4s 后落到 Nova（2.7.2 起，设置页可关） |
+| 最近任务里点空白处 | 约 0.1s 后落到 Nova（2.7.2 起，设置页可关） |
+| 最近任务里再上滑一次 | 约 0.1s 后落到 Nova（2.7.2 起，设置页可关） |
 
 ## 6. 已知限制 / 后续
 
@@ -140,6 +140,8 @@ grep MagicHome /data/adb/lspd/log/modules_*.log | tail
 - 荣耀桌面更新后类名/状态名可能变化（本机 `HnOverviewState` / `NormalState` /
   `HnBackgroundAppState`）。日志里的 `state -> xxx` 可直接用来适配。
 - 模块只在荣耀桌面进程里工作，不修改系统文件、不改默认桌面配置，卸载即恢复。
+- **响应速度**：跳转本身是几十毫秒内发出的，剩下要等荣耀桌面自己把「回桌面」走完。
+  荣耀桌面的转场动画越长，看起来就越慢；**打开「设置 → 无障碍 → 关闭动画」会更快**。
 
 ## 7. 卸载
 
@@ -153,27 +155,16 @@ kill -9 $(pidof com.hihonor.android.launcher)
 
 ## 8. 版本记录 / 关键修复
 
+只列用户能感知到的关键版本，更细的中间改动见 git 历史。
+
 | 版本 | 变更 |
 |---|---|
-| 2.7.2 | **最近任务退出也进目标桌面**：在最近任务里不点卡片、点空白处或再上滑一次时，荣耀桌面由 `HnOverviewState` 退回 `NormalState`（这条路径没有 HOME 手势令牌，也不会重发 `onTopResumedActivityChanged`），2.7.1 之前会停到系统桌面。现在按「`goToState` 的 Overview → Normal」识别并接管，延迟 400ms 转场后跳到目标桌面；刚按过任务卡片（400ms 内）不接管，避免把「打开这个应用」误判成回桌面。设置页新增「最近任务」开关，可单独关掉这个行为（默认开） |
-| 2.7.1 | **改包名进 LSPosed 仓库**：包名 `com.dsh.magichome` → `io.github.jocoks.magichome`（LSPosed 官方仓库要求 App ID 用 `io.github.<GitHub 用户名>` 或自有域名），authority / 入口类 / java_init 同步改名，功能与 2.7.0 一致。**从 2.7.0 升级需先卸载旧包**（包名不同，配置不迁移） |
-| 2.7.0 | **改目标页为「应用信息」**：机主要的是设置里的「应用信息」页（卸载/强行停止/权限/存储…），于是长按改为 `Settings.ACTION_APPLICATION_DETAILS_SETTINGS` + `data:package:<pkg>`（落到 `com.android.settings.applications.InstalledAppDetails`），2.6.0 的 `MANAGE_APP_PERMISSIONS` 只留作回退 |
-| 2.6.0 | **长按卡片 → 权限设置**（机主反馈图标太丑，去掉 2.5.0 的按钮）：不再注入任何视图，改为在 `TaskView#dispatchTouchEvent` 里跟踪手势——原地按住 ≥460ms、位移不超过 touchSlop 就打开该任务的权限页，触发后吞掉后续 MOVE/UP（避免又变成「打开应用」）；卡片顶栏分屏/锁定按钮所在区域不接管。实测：长按 460ms 进「XX 权限」页、轻点仍正常打开应用 |
-| 2.5.0 | **最近任务卡片「应用信息」按钮**（已废弃，见 2.6.0）：钩 `TaskViewHeader#onFinishInflate` 注入圆形按钮；触摸在 `TaskView#dispatchTouchEvent` 拦下，读 `TaskView.mTask` 的顶层 ComponentName 后 `startActivity(android.intent.action.MANAGE_APP_PERMISSIONS --es android.intent.extra.PACKAGE_NAME <pkg>)` 打开权限页 |
-| 2.4.0 | **项目改名 MagicHome**：包名 `com.dsh.novahome` → `com.dsh.magichome`，配置 provider authority `com.dsh.magichome.settings`，SharedPreferences `magichome`，钩子 id 前缀 `magichome-`。**升级要卸载旧版**（包名不同，配置不迁移；装好后到设置页重选一次目标桌面）。功能与 2.3.0 一致 |
-| 2.3.0 | **任意第三方桌面**：新增设置页（`SettingsActivity`）与配置 provider（`SettingsProvider`），首次进入由用户点选或输入目标桌面包名并保存，5 秒内自动生效、无需重启；跳转/手势预热/开机预热全部跟随配置。Nova 之外需该桌面有导出的 ContentProvider 才会预热，没有则跳过（只少了预热）。实测：切到荣耀桌面后上滑确实回落荣耀桌面，切回 Nova 后恢复正常 |
-| 2.2.1 | **底部边缘上滑**：按用户更正，「停在荣耀桌面时快速上滑进 Nova」只认**屏幕最底部 240px 内起手**（屏高 3104 时 y ≥ 2864）；并改从 Quickstep 手势管线 `TouchInterationManager.processGestureInputEvent` 取事件（底部边缘上滑会被系统手势接管，Activity 只收到 DOWN 后 CANCEL，原路径永远不触发）。实测：底部边缘 550px/83ms → 跳 Nova；695ms 慢拖不触发；屏幕中部 400px 快滑不触发 |
-| 2.2.0 | **桌面快速上滑进 Nova**：停在荣耀默认桌面（NormalState、抽屉未开）时，快、直、够长的上滑直接跳 Nova；判定在 ACTION_DOWN 抓状态（上滑过程中荣耀会切 HintState/抽屉动画态，抬手再判已经晚了），要求 dy ≤ -220px、dt ≤ 400ms、横向漂移 ≤ 纵向 60%、有窗口焦点、1.2s 冷却。实测：桌面快速上滑 1/1 命中；慢拖 701ms 不触发；最近任务里上滑 `ok=false` 不触发；从 App 上滑回桌面的原逻辑不受影响 |
-| 2.1.0 | **预热 Nova**：① 开机后首次回桌面 +6s 静默拉起 Nova 进程（`content://com.teslacoilsw.launcher.api` provider，不显示界面，仅在 uptime < 10 分钟内生效）；② 每次从 App 上滑手势一起手即预热（`TouchInterationManager.createOtherActivityInputConsumer`），转场结束时 Nova 进程已就绪。实测 Nova 进程在手势 DOWN 后即 `am_proc_start ... content provider`，桌面转场后 +151ms 即 resumed（预热前冷启动需再等约 0.3~0.5s） |
-| 1.4.3 | 跳转成功后 2s 兜底恢复荣耀桌面窗口透明度（极端失败场景不会留下隐形桌面） |
-| 2.0.0 | **精准注入**：改钩 Quickstep 手势终点 `GestureState.setEndTarget(GestureEndTarget)`，只有终点是 `HOME` 才发 1.2s 生效的令牌；`topResumed` 与 StateManager 兜底都必须带令牌才跳转。日志实测：上滑回桌面 4/4 命中，进最近任务/快速切应用 3/3 不再误跳，从 Nova 点开 App 0 触发 |
-| 1.9.1 | 探针版：只记录 Quickstep 管线方法调用（`setEndTarget`/`finishSwipeUp`/`onSettledOnEndTarget`/`calculateEndTarget`…），用于定位精确注入点 |
-| 1.9.0 | 焦点门控 + 触屏取消（`hasWindowFocus` + `dispatchTouchEvent` 取消），降低「开 App 动画期间误跳」 |
-| 1.4.2 | Home 转场等待期间把荣耀桌面窗口设为透明（看到的是壁纸过渡而不是荣耀桌面图标），进入最近任务/后台态立即恢复 |
-| 1.4.1 | **关键修复**：`mPendingBounce` 执行后未清空，导致第一次跳转之后所有后续跳转都被 `bounce already pending` 挡掉（表现为重启后第一次有效、之后「像没装一样」） |
-| 1.4.0 | 打开 system_server 原生层（HOME intent 改写） |
-| 1.3.5 | 跳转延迟 250ms→800ms，避开系统 Home 转场把荣耀桌面重新置前 |
-| 1.3.4 | resume 时读取 `StateManager.getState()`，补上「已是 NormalState 不回调 goToState」的漏跳 |
+| 2.7.4 | **最近任务退出提速 + 新图标 + 响应速度说明**：① 2.7.2 实测从转入 `NormalState` 到真正跳转固定 412ms（延迟全由模块的 400ms 等待造成），改为 50ms 就跳、桌面未退出最近任务时每 50ms 补试（最多 3 次），并在进入最近任务时预热目标桌面；② 自适应图标（柔和渐变底 + 白色国际象棋马 + 柔和投影，含单色层）；③ 设置页一行说明：荣耀的转场动画会拖慢响应，打开「设置 → 无障碍 → 关闭动画」会更快 |
+| 2.7.2 | **最近任务退出也进目标桌面**：最近任务里不点卡片、点空白处或再上滑一次时，荣耀桌面由 `HnOverviewState` 退回 `NormalState`（没有 HOME 手势令牌），按 `goToState` 的 Overview → Normal 识别接管，跳到目标桌面；刚按过任务卡片（400ms 内）不接管。设置页新增「最近任务」开关 |
+| 2.7.1 | **改包名进 LSPosed 仓库**：`com.dsh.magichome` → `io.github.jocoks.magichome`（LSPosed 官方仓库要求 App ID 为 `io.github.<用户名>`）。**从 2.7.0 升级需先卸载旧包** |
+| 2.4.0 | **项目改名 MagicHome**：包名 `com.dsh.novahome` → `com.dsh.magichome`。**升级要卸载旧版**并重选一次目标桌面 |
+| 2.3.0 | **任意第三方桌面**：新增设置页与配置 provider，不再写死 Nova |
+| 2.0.0 | **精准注入**：改钩 Quickstep 手势终点 `GestureState.setEndTarget`，只在真的要回桌面时才跳转，不再误跳 |
 
 ### 实测结论：本机 system_server 原生层不会触发
 `home` 手势在本机走的是「把 home 任务置前」（`wm_focused_root_task ... bringingFoundTaskToFront`），
