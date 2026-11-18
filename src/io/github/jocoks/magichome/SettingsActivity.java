@@ -75,7 +75,7 @@ public class SettingsActivity extends Activity {
         root.addView(recentsTitle);
 
         Switch recentsExit = new Switch(this);
-        recentsExit.setText("最近任务里点空白 / 再上滑一次，也进入目标桌面");
+        recentsExit.setText("最近任务点空白 / 再上滑一次 / 按返回退出应用，也进入目标桌面");
         recentsExit.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         recentsExit.setChecked(sp.getBoolean(SettingsProvider.KEY_RECENTS_EXIT, true));
         recentsExit.setOnCheckedChangeListener((b, checked) -> sp.edit()
@@ -83,7 +83,7 @@ public class SettingsActivity extends Activity {
         root.addView(recentsExit);
 
         TextView recentsHint = new TextView(this);
-        recentsHint.setText("关闭后：在最近任务里点空白处或再上滑，仍回到系统桌面。");
+        recentsHint.setText("关闭后：在最近任务里点空白、再上滑，或从应用按返回退出，都仍回到系统桌面。");
         recentsHint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         recentsHint.setTextColor(Color.DKGRAY);
         recentsHint.setPadding(0, 0, 0, dp(4));

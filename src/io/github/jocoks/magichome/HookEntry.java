@@ -70,6 +70,18 @@ public class HookEntry extends XposedModule {
     private static final int RECENTS_EXIT_RETRIES = 3;
     /** 刚点过任务卡片时不要接管：那是「打开这个应用」，不是「回桌面」 */
     private static final long CARD_TAP_GUARD_MS = 400L;
+
+    /**
+     * 第三条兜底：按返回键退出应用时，system_server 直接把 home 任务（荣耀桌面）
+     * 置前 —— 既没有 Quickstep 手势令牌，桌面状态也没变化（本来就在 NormalState）。
+     * 这里按「桌面从后台回到前台」接管，避免落到系统桌面。
+     * 与「最近任务」开关共用同一个设置项。
+     */
+    private static final long TOP_RESUMED_FALLBACK_DELAY_MS = 40L;
+    /** 桌面至少离开前台这么久，才算「从后台回来」（排除转场抖动） */
+    private static final long TOP_RESUMED_MIN_BG_MS = 200L;
+    /** 刚跳过一次就不要再跳，避免来回抖 */
+    private static final long BOUNCE_DEDUPE_MS = 1200L;
     /**
      * 手势令牌有效期：只有 Quickstep 手势结算到 HOME（GestureState.setEndTarget(HOME)）
      * 之后的这段时间内的「桌面 topResumed」才算真·上滑回桌面。
@@ -133,6 +145,10 @@ public class HookEntry extends XposedModule {
     private static volatile Activity sCurrentLauncherAct;
     /** Quickstep 手势结算到 HOME 的时刻（uptimeMillis），0 表示没有有效手势 */
     private static volatile long sHomeGestureAt = 0L;
+    /** 桌面最后一次失去顶层的时间（0 表示本次进程内还没失去过） */
+    private static volatile long sTopLostAt;
+    /** 最后一次跳到目标桌面的时间，用于防抖 */
+    private static volatile long sLastBouncedAt;
 
     /** 本次开机后的静默预热是否已经安排过 */
     private volatile boolean mBootWarmArmed = false;
@@ -453,19 +469,57 @@ public class HookEntry extends XposedModule {
             log(Log.INFO, TAG, "topResumed=" + top + " state=" + currentStateName(act));
         }
         if (!top) {
+            sTopLostAt = SystemClock.uptimeMillis();
             cancelPendingBounce("lost topResumed");
             return;
         }
+        long lostAt = sTopLostAt;
+        sTopLostAt = 0L;
         if (isOverviewNow(act)) {
             log(Log.INFO, TAG, "topResumed but overview, skip");
             return;
         }
-        if (!isHomeGestureFresh()) {
-            log(Log.INFO, TAG, "topResumed without home-gesture token, skip");
+        if (isHomeGestureFresh()) {
+            sCurrentLauncherAct = act;
+            scheduleBounce(act, TOP_RESUMED_DELAY_MS, "topResumed+homeGesture");
             return;
         }
+        // 没有手势令牌：按返回键退出应用走的就是这条（系统直接把 home 任务置前）
+        long now = SystemClock.uptimeMillis();
+        boolean fromBackground = lostAt > 0L && now - lostAt >= TOP_RESUMED_MIN_BG_MS;
+        boolean justBounced = sLastBouncedAt > 0L && now - sLastBouncedAt < BOUNCE_DEDUPE_MS;
+        long cardAt = RecentsAppInfo.lastCardDownAt();
+        boolean justCard = cardAt > 0L && now - cardAt < CARD_TAP_GUARD_MS;
+        boolean multiWindow = false;
+        try {
+            multiWindow = act.isInMultiWindowMode();
+        } catch (Throwable ignored) {
+        }
+        if (!fromBackground) {
+            if (DEBUG) {
+                log(Log.INFO, TAG, "topResumed without home-gesture token, skip (not from background)");
+            }
+            return;
+        }
+        if (justBounced) {
+            log(Log.INFO, TAG, "topResumed from background, skip: bounced just now");
+            return;
+        }
+        if (justCard) {
+            log(Log.INFO, TAG, "topResumed from background, skip: task card tapped just now");
+            return;
+        }
+        if (multiWindow) {
+            log(Log.INFO, TAG, "topResumed from background, skip: multi-window");
+            return;
+        }
+        if (!isRecentsExitInterceptOn(act)) {
+            log(Log.INFO, TAG, "topResumed from background, skip: switch off");
+            return;
+        }
+        log(Log.INFO, TAG, "topResumed from background (no gesture), bounce to target");
         sCurrentLauncherAct = act;
-        scheduleBounce(act, TOP_RESUMED_DELAY_MS, "topResumed+homeGesture");
+        scheduleBounce(act, TOP_RESUMED_FALLBACK_DELAY_MS, "topResumed-from-bg");
     }
 
     private void onLauncherStateChanged(List<Object> args) {
@@ -1047,6 +1101,7 @@ public class HookEntry extends XposedModule {
                     | Intent.FLAG_ACTIVITY_CLEAR_TOP
                     | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
             act.startActivity(target);
+            sLastBouncedAt = SystemClock.uptimeMillis();
             consumeHomeGesture();
             log(Log.INFO, TAG, "bounced -> " + pkg + ", from "
                     + act.getComponentName().flattenToShortString()

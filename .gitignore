@@ -14,3 +14,7 @@ gh_token.json
 
 .work/
 tools/aarx/
+preview-*.png
+icon-preview-*.png
+__pycache__/
+*.pyc
