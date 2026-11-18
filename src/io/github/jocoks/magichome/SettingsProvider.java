@@ -1,4 +1,4 @@
-package com.dsh.magichome;
+package io.github.jocoks.magichome;
 
 import android.content.ComponentName;
 import android.content.ContentProvider;
@@ -16,13 +16,13 @@ import android.net.Uri;
 /**
  * 目标桌面配置的只读出口。
  *
- * 模块本体（com.dsh.magichome）里存 SharedPreferences，但真正发跳转的是
+ * 模块本体（io.github.jocoks.magichome）里存 SharedPreferences，但真正发跳转的是
  * 荣耀桌面进程（另一个 uid），所以用 exported 的 provider 把「目标桌面包名 /
  * 启动组件 / 可用于静默预热的 provider 名」交给钩子侧读取。
  */
 public class SettingsProvider extends ContentProvider {
 
-    public static final String AUTHORITY = "com.dsh.magichome.settings";
+    public static final String AUTHORITY = "io.github.jocoks.magichome.settings";
     public static final String URI_TARGET = "content://" + AUTHORITY + "/target";
 
     public static final String COL_PKG = "target_pkg";

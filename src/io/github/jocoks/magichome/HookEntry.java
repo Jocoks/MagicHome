@@ -1,4 +1,4 @@
-package com.dsh.magichome;
+package io.github.jocoks.magichome;
 
 import android.app.Activity;
 import android.content.ComponentName;

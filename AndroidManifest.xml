@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.dsh.magichome"
-    android:versionCode="33"
-    android:versionName="2.7.0">
+    package="io.github.jocoks.magichome"
+    android:versionCode="34"
+    android:versionName="2.7.1">
 
     <uses-sdk
         android:minSdkVersion="29"
@@ -30,7 +30,7 @@
 
         <provider
             android:name=".SettingsProvider"
-            android:authorities="com.dsh.magichome.settings"
+            android:authorities="io.github.jocoks.magichome.settings"
             android:exported="true"
             android:enabled="true" />
     </application>

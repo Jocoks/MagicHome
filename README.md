@@ -43,7 +43,7 @@
    用旧 `de.robv.android.xposed:api:82` 编译出来的模块会在加载时报
    `ClassNotFoundException: Mj.Edis.xxx.IXposedHookLoadPackage`。模块格式为
    `META-INF/xposed/{module.prop,scope.list,java_init.list}`（与设备上
-   `honorhook` 模块一致），入口类 `com.dsh.magichome.HookEntry` 继承 `XposedModule`。
+   `honorhook` 模块一致），入口类 `io.github.jocoks.magichome.HookEntry` 继承 `XposedModule`。
 
 ---
 
@@ -51,16 +51,16 @@
 
 ```
 magichome/
-├── AndroidManifest.xml          # 包名 com.dsh.magichome
+├── AndroidManifest.xml          # 包名 io.github.jocoks.magichome
 ├── build.sh                     # 设备内构建（无需 Android Studio）
-├── src/com/dsh/magichome/
+├── src/io/github/jocoks/magichome/
 │   ├── HookEntry.java           # 主逻辑（Quickstep 钩子 / 令牌 / 边缘上滑 / 预热）
 │   ├── SettingsActivity.java    # 设置页：指定目标桌面包名（纯代码 UI，无 res）
-│   └── SettingsProvider.java    # 给 HookEntry 提供配置（authority com.dsh.magichome.settings）
+│   └── SettingsProvider.java    # 给 HookEntry 提供配置（authority io.github.jocoks.magichome.settings）
 ├── meta/META-INF/xposed/
 │   ├── module.prop              # minApiVersion=102 / targetApiVersion=102
 │   ├── scope.list               # 荣耀桌面两个包名 + android（预留层）
-│   └── java_init.list           # com.dsh.magichome.HookEntry
+│   └── java_init.list           # io.github.jocoks.magichome.HookEntry
 └── tools/
     ├── pack.py                  # 把 classes.dex + META-INF/xposed 打进 APK
     ├── lsp_enable.py            # 直接写 LSPosed 配置库启用模块（备用路径）
@@ -142,7 +142,7 @@ grep MagicHome /data/adb/lspd/log/modules_*.log | tail
 ## 7. 卸载
 
 ```sh
-cmd package uninstall com.dsh.magichome
+cmd package uninstall io.github.jocoks.magichome
 kill -9 $(pidof com.hihonor.android.launcher)
 ```
 
@@ -153,6 +153,7 @@ kill -9 $(pidof com.hihonor.android.launcher)
 
 | 版本 | 变更 |
 |---|---|
+| 2.7.1 | **改包名进 LSPosed 仓库**：包名 `com.dsh.magichome` → `io.github.jocoks.magichome`（LSPosed 官方仓库要求 App ID 用 `io.github.<GitHub 用户名>` 或自有域名），authority / 入口类 / java_init 同步改名，功能与 2.7.0 一致。**从 2.7.0 升级需先卸载旧包**（包名不同，配置不迁移） |
 | 2.7.0 | **改目标页为「应用信息」**：机主要的是设置里的「应用信息」页（卸载/强行停止/权限/存储…），于是长按改为 `Settings.ACTION_APPLICATION_DETAILS_SETTINGS` + `data:package:<pkg>`（落到 `com.android.settings.applications.InstalledAppDetails`），2.6.0 的 `MANAGE_APP_PERMISSIONS` 只留作回退 |
 | 2.6.0 | **长按卡片 → 权限设置**（机主反馈图标太丑，去掉 2.5.0 的按钮）：不再注入任何视图，改为在 `TaskView#dispatchTouchEvent` 里跟踪手势——原地按住 ≥460ms、位移不超过 touchSlop 就打开该任务的权限页，触发后吞掉后续 MOVE/UP（避免又变成「打开应用」）；卡片顶栏分屏/锁定按钮所在区域不接管。实测：长按 460ms 进「XX 权限」页、轻点仍正常打开应用 |
 | 2.5.0 | **最近任务卡片「应用信息」按钮**（已废弃，见 2.6.0）：钩 `TaskViewHeader#onFinishInflate` 注入圆形按钮；触摸在 `TaskView#dispatchTouchEvent` 拦下，读 `TaskView.mTask` 的顶层 ComponentName 后 `startActivity(android.intent.action.MANAGE_APP_PERMISSIONS --es android.intent.extra.PACKAGE_NAME <pkg>)` 打开权限页 |
@@ -342,7 +343,7 @@ grep MagicHome /data/adb/lspd/log/modules_*.log | tail -20 | sed 's/.*MagicHome,
 
 ```sh
 # 看当前生效配置（root/shell）
-content query --uri content://com.dsh.magichome.settings/target
+content query --uri content://io.github.jocoks.magichome.settings/target
 # 日志里每次跳转都会打印目标
 grep -E "target launcher =|bounced ->" /data/adb/lspd/log/modules_*.log | tail
 ```
