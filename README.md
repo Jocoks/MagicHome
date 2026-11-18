@@ -389,3 +389,9 @@ mCurrentFocus=... com.dsharnessmobile.shell/com.dsharnessmobile.shell.MainActivi
 
 > `Probe.java` 的视图树探测默认关闭（`HookEntry.PROBE_OVERVIEW=false`）：
 > 一次打几百行 `Log.i` 会让最近任务界面明显卡顿，排查时临时打开、看完就关。
+
+## 图标
+
+应用图标是「独角兽」剪影，来源 [game-icons.net](https://game-icons.net/) 的 unicorn（作者 Delapouite），
+许可 [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)；本项目做了描边、圆角化与配色调整。
+生成脚本见 `tools/make_icon.py`。

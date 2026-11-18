@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""生成 MagicHome 的自适应图标。
+"""生成 MagicHome 的自适应图标（独角兽剪影）。
 
-风格：柔和渐变底（雾蓝 → 藕紫 → 浅粉）+ 四边内侧阴影 + 圆角化的白色国际象棋马
-      + 马身一圈细黑线 + 极淡竖向渐变 + 轻微羽化。
+风格：柔和渐变底（雾蓝 → 藕紫 → 浅粉）+ 四边内侧阴影 + 圆角化的白色独角兽剪影
+      + 轮廓一圈细黑线 + 极淡竖向渐变 + 轻微羽化。
+图标来源：game-icons.net 的 unicorn（作者 Delapouite，CC BY 3.0）。
 
 用法（仓库根目录）：python3 tools/make_icon.py
 依赖：pip install --break-system-packages pillow cairosvg
@@ -20,10 +21,10 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-SVG = os.path.join(HERE, "chess_knight.svg")
+SVG = os.path.join(HERE, "unicorn.svg")
 SS = 4  # 超采样
 
-GLYPH_H = 0.385      # 马高占画布比例
+GLYPH_H = 0.46       # 独角兽高占画布比例
 ROUND = 0.0035       # 圆角化半径（占画布比例，越大越「软」）
 FEATHER = 0.0025     # 马身边缘羽化
 LINE_WIDTH = 0.011   # 黑线宽度
@@ -87,8 +88,8 @@ def _dilate(im, n):
 
 
 def knight_mask(px):
-    """把马画成蒙版，并做开/闭运算把尖角磨圆。"""
-    svg = open(SVG, encoding="utf-8").read().replace("<path ", '<path fill="#FFFFFFFF" ')
+    """把独角兽画成蒙版，并做开/闭运算把尖角磨圆。"""
+    svg = open(SVG, encoding="utf-8").read().replace("currentColor", "#FFFFFFFF")
     glyph = Image.open(io.BytesIO(cairosvg.svg2png(
         bytestring=svg.encode(), output_width=px * 2, output_height=px * 2))).convert("RGBA")
     glyph = glyph.crop(glyph.getbbox())
@@ -108,14 +109,14 @@ def render_foreground(px):
     mask = knight_mask(px)
     canvas = Image.new("RGBA", (px, px), (0, 0, 0, 0))
 
-    # 马身边缘细黑线
+    # 轮廓细黑线
     ring = ImageChops.subtract(_dilate(mask, max(1, int(px * LINE_WIDTH / 4))), mask)
     line = Image.new("RGBA", (px, px), LINE_COLOR + (255,))
     line.putalpha(ring.point(lambda v: int(v * LINE_ALPHA)))
     canvas.alpha_composite(line.filter(
         ImageFilter.GaussianBlur(max(1, int(px * LINE_BLUR)))))
 
-    # 白色马身 + 极淡竖向渐变 + 轻微羽化
+    # 白色剪影 + 极淡竖向渐变 + 轻微羽化
     body = Image.new("RGBA", (px, px), (255, 255, 255, 255))
     tint = Image.new("RGBA", (px, px), (0, 0, 0, 0))
     tp = tint.load()
