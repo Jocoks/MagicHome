@@ -537,6 +537,10 @@ public class HookEntry extends XposedModule {
             armOverviewProbe();
             // 进最近任务就静默拉起目标桌面进程，退出时跳转不用等冷启动
             warmTargetSilently("overview");
+            // 最近任务底部显示运存占用
+            OverviewStats.show(sCurrentLauncherAct);
+        } else {
+            OverviewStats.hide();
         }
         Activity act = sCurrentLauncherAct;
         if (isOverviewStateName(name) || name.contains("Background")) {
