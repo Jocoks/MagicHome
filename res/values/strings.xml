@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- LSPosed 管理器在模块列表里显示的说明（取 application 的 android:description） -->
+    <string name="module_description">上滑回桌面时改为进入你指定的第三方桌面（默认 Nova Launcher），绕过荣耀不让设默认桌面的限制；最近任务点空白退出、按返回键退出也会落到你的桌面。</string>
+</resources>
