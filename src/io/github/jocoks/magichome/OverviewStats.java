@@ -3,8 +3,6 @@ package io.github.jocoks.magichome;
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.content.Context;
-import android.graphics.Bitmap;
-import android.graphics.Canvas;
 import android.graphics.Color;
 import android.os.Handler;
 import android.os.Looper;
@@ -68,17 +66,9 @@ final class OverviewStats {
                     if (tv == null) {
                         return;
                     }
-                    // 先隐藏（参与布局但不绘制），采样背景时不会采到自己
-                    tv.setVisibility(View.INVISIBLE);
+                    tv.setVisibility(View.VISIBLE);
                     sVisible = true;
                     bind();
-                    tv.post(new Runnable() {
-                        @Override
-                        public void run() {
-                            applyTextColorByBackground(act, tv);
-                            tv.setVisibility(View.VISIBLE);
-                        }
-                    });
                     sHandler.removeCallbacks(REFRESH);
                     sHandler.postDelayed(REFRESH, REFRESH_MS);
                 } catch (Throwable t) {
@@ -131,14 +121,14 @@ final class OverviewStats {
         tv.setSingleLine(true);
         tv.setClickable(false);
         tv.setFocusable(false);
-        tv.setShadowLayer(dp(act, 3), 0f, dp(act, 1), 0x66000000);
+        tv.setShadowLayer(dp(act, 4), 0f, dp(act, 1.5f), 0x99000000);
         tv.setText(statsText(act));
 
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
-        lp.bottomMargin = dp(act, 56);   // 清理键下方、手势条上方
+        lp.bottomMargin = Math.max(0, dp(act, 56) - 20);   // 清理键下方、手势条上方，再下移 20px
         try {
             root.addView(tv, lp);
         } catch (Throwable t) {
@@ -152,64 +142,6 @@ final class OverviewStats {
         sView = new WeakReference<>(tv);
         Log.i(TAG, "overview stats view attached");
         return tv;
-    }
-
-    /** 把一个 1/4 缩略的桌面窗口画出来，取文字区域的平均亮度，决定用黑字还是白字。 */
-    private static void applyTextColorByBackground(Activity act, TextView tv) {
-        int lum = -1;
-        Bitmap bmp = null;
-        try {
-            View decor = act.getWindow().getDecorView();
-            int w = decor.getWidth();
-            int h = decor.getHeight();
-            if (w > 0 && h > 0) {
-                int sw = Math.max(1, w / 4);
-                int sh = Math.max(1, h / 4);
-                bmp = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888);
-                Canvas canvas = new Canvas(bmp);
-                canvas.scale(sw / (float) w, sh / (float) h);
-                int[] loc = new int[2];
-                tv.getLocationInWindow(loc);
-                // 采样区域就是我们文字所在的那一条
-                int left = loc[0] / 4;
-                int top = loc[1] / 4;
-                int right = Math.min(sw - 1, (loc[0] + tv.getWidth()) / 4);
-                int bottom = Math.min(sh - 1, (loc[1] + tv.getHeight()) / 4);
-                decor.draw(canvas);
-                long sum = 0L;
-                int n = 0;
-                for (int y = Math.max(0, top); y <= bottom; y++) {
-                    for (int x = Math.max(0, left); x <= right; x++) {
-                        int c = bmp.getPixel(x, y);
-                        int a = Color.alpha(c);
-                        if (a < 40) {
-                            continue;
-                        }
-                        sum += (long) (0.299 * Color.red(c) + 0.587 * Color.green(c)
-                                + 0.114 * Color.blue(c));
-                        n++;
-                    }
-                }
-                if (n > 0) {
-                    lum = (int) (sum / n);
-                }
-            }
-        } catch (Throwable t) {
-            Log.w(TAG, "sample background failed: " + t);
-        } finally {
-            if (bmp != null) {
-                bmp.recycle();
-            }
-        }
-        boolean darkBackground = lum >= 0 && lum < 140;
-        int textColor = darkBackground ? Color.WHITE : Color.parseColor("#FF1B1B1F");
-        int shadow = darkBackground ? 0x66000000 : 0x66FFFFFF;
-        try {
-            tv.setTextColor(textColor);
-            tv.setShadowLayer(dp(tv.getContext(), 3), 0f, dp(tv.getContext(), 1), shadow);
-        } catch (Throwable ignored) {
-        }
-        Log.i(TAG, "overview stats color: bgLum=" + lum + " text=" + (darkBackground ? "white" : "black"));
     }
 
     private static void bind() {
@@ -257,16 +189,12 @@ final class OverviewStats {
         return String.format(Locale.US, "%.0f MB", bytes / 1024.0 / 1024.0);
     }
 
-    private static int dp(int value) {
-        return dp(null, value);
-    }
-
-    private static int dp(Context ctx, int value) {
+    private static int dp(Context ctx, float value) {
         if (ctx == null) {
             ctx = sView.get() != null ? sView.get().getContext() : null;
         }
         if (ctx == null) {
-            return value * 3;
+            return (int) (value * 3);
         }
         return (int) (value * ctx.getResources().getDisplayMetrics().density + 0.5f);
     }
