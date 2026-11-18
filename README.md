@@ -129,6 +129,8 @@ grep MagicHome /data/adb/lspd/log/modules_*.log | tail
 | 任意 App 里快速上滑 | 约 0.25s 后落到 Nova 桌面 |
 | 上滑并停顿 | 最近任务正常停留，卡片可滑动 |
 | 最近任务里点一个 App | 进入该 App，不被 Nova 顶掉 |
+| 最近任务里点空白处 | 约 0.4s 后落到 Nova（2.7.2 起，设置页可关） |
+| 最近任务里再上滑一次 | 约 0.4s 后落到 Nova（2.7.2 起，设置页可关） |
 
 ## 6. 已知限制 / 后续
 
@@ -153,6 +155,7 @@ kill -9 $(pidof com.hihonor.android.launcher)
 
 | 版本 | 变更 |
 |---|---|
+| 2.7.2 | **最近任务退出也进目标桌面**：在最近任务里不点卡片、点空白处或再上滑一次时，荣耀桌面由 `HnOverviewState` 退回 `NormalState`（这条路径没有 HOME 手势令牌，也不会重发 `onTopResumedActivityChanged`），2.7.1 之前会停到系统桌面。现在按「`goToState` 的 Overview → Normal」识别并接管，延迟 400ms 转场后跳到目标桌面；刚按过任务卡片（400ms 内）不接管，避免把「打开这个应用」误判成回桌面。设置页新增「最近任务」开关，可单独关掉这个行为（默认开） |
 | 2.7.1 | **改包名进 LSPosed 仓库**：包名 `com.dsh.magichome` → `io.github.jocoks.magichome`（LSPosed 官方仓库要求 App ID 用 `io.github.<GitHub 用户名>` 或自有域名），authority / 入口类 / java_init 同步改名，功能与 2.7.0 一致。**从 2.7.0 升级需先卸载旧包**（包名不同，配置不迁移） |
 | 2.7.0 | **改目标页为「应用信息」**：机主要的是设置里的「应用信息」页（卸载/强行停止/权限/存储…），于是长按改为 `Settings.ACTION_APPLICATION_DETAILS_SETTINGS` + `data:package:<pkg>`（落到 `com.android.settings.applications.InstalledAppDetails`），2.6.0 的 `MANAGE_APP_PERMISSIONS` 只留作回退 |
 | 2.6.0 | **长按卡片 → 权限设置**（机主反馈图标太丑，去掉 2.5.0 的按钮）：不再注入任何视图，改为在 `TaskView#dispatchTouchEvent` 里跟踪手势——原地按住 ≥460ms、位移不超过 touchSlop 就打开该任务的权限页，触发后吞掉后续 MOVE/UP（避免又变成「打开应用」）；卡片顶栏分屏/锁定按钮所在区域不接管。实测：长按 460ms 进「XX 权限」页、轻点仍正常打开应用 |

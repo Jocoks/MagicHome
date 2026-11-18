@@ -28,9 +28,12 @@ public class SettingsProvider extends ContentProvider {
     public static final String COL_PKG = "target_pkg";
     public static final String COL_ACT = "target_act";
     public static final String COL_WARM = "warm_authority";
+    /** 最近任务里点空白 / 再上滑一次时，也跳到目标桌面（"1" 开 / "0" 关） */
+    public static final String COL_RECENTS_EXIT = "recents_exit";
 
     public static final String PREFS = "magichome";
     public static final String KEY_TARGET = "target_pkg";
+    public static final String KEY_RECENTS_EXIT = "recents_exit";
 
     public static final String DEFAULT_PKG = "com.teslacoilsw.launcher";
     private static final String DEFAULT_WARM_AUTHORITY = "com.teslacoilsw.launcher.api";
@@ -61,8 +64,14 @@ public class SettingsProvider extends ContentProvider {
             }
             warm = warmAuthority(ctx, pkg);
         }
-        MatrixCursor c = new MatrixCursor(new String[]{COL_PKG, COL_ACT, COL_WARM});
-        c.addRow(new Object[]{pkg, act, warm});
+        boolean recentsExit = true;
+        if (ctx != null) {
+            recentsExit = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                    .getBoolean(KEY_RECENTS_EXIT, true);
+        }
+        MatrixCursor c = new MatrixCursor(
+                new String[]{COL_PKG, COL_ACT, COL_WARM, COL_RECENTS_EXIT});
+        c.addRow(new Object[]{pkg, act, warm, recentsExit ? "1" : "0"});
         return c;
     }
 

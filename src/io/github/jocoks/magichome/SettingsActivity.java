@@ -15,6 +15,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -66,6 +67,27 @@ public class SettingsActivity extends Activity {
         save.setText("保存并生效");
         save.setOnClickListener(v -> save());
         root.addView(save);
+
+        TextView recentsTitle = new TextView(this);
+        recentsTitle.setText("最近任务");
+        recentsTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        recentsTitle.setPadding(0, dp(18), 0, dp(4));
+        root.addView(recentsTitle);
+
+        Switch recentsExit = new Switch(this);
+        recentsExit.setText("最近任务里点空白 / 再上滑一次，也进入目标桌面");
+        recentsExit.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        recentsExit.setChecked(sp.getBoolean(SettingsProvider.KEY_RECENTS_EXIT, true));
+        recentsExit.setOnCheckedChangeListener((b, checked) -> sp.edit()
+                .putBoolean(SettingsProvider.KEY_RECENTS_EXIT, checked).apply());
+        root.addView(recentsExit);
+
+        TextView recentsHint = new TextView(this);
+        recentsHint.setText("关闭后：在最近任务里点空白处或再上滑，仍回到系统桌面。");
+        recentsHint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        recentsHint.setTextColor(Color.DKGRAY);
+        recentsHint.setPadding(0, 0, 0, dp(4));
+        root.addView(recentsHint);
 
         TextView listTitle = new TextView(this);
         listTitle.setText("本机已安装的桌面：");

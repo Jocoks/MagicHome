@@ -58,6 +58,15 @@ public class HookEntry extends XposedModule {
     /** 状态机兜底延迟（万一没收到 onTopResumedActivityChanged） */
     private static final long FALLBACK_DELAY_MS = 400L;
     /**
+     * 最近任务里「没点卡片、点空白处或再上滑一次」也会回桌面：
+     * 这条路径既没有 HOME 手势令牌，也不会重发 onTopResumedActivityChanged
+     * （桌面本来就在顶层），只能用 goToState 的「Overview -> Normal」来认。
+     * 延迟留够桌面自己那一下转场动画，避免两个动画打架。
+     */
+    private static final long RECENTS_EXIT_DELAY_MS = 400L;
+    /** 刚点过任务卡片时不要接管：那是「打开这个应用」，不是「回桌面」 */
+    private static final long CARD_TAP_GUARD_MS = 400L;
+    /**
      * 手势令牌有效期：只有 Quickstep 手势结算到 HOME（GestureState.setEndTarget(HOME)）
      * 之后的这段时间内的「桌面 topResumed」才算真·上滑回桌面。
      */
@@ -86,6 +95,8 @@ public class HookEntry extends XposedModule {
     private static volatile String sTargetAct = DEFAULT_ACT;
     private static volatile String sTargetWarmUri = DEFAULT_WARM_URI;
     private static volatile long sTargetLoadedAt = 0L;
+    /** 最近任务退出拦截（设置页开关，默认开） */
+    private static volatile boolean sRecentsExitToTarget = true;
 
     /**
      * 停在荣耀默认桌面时，快速上滑直接进 Nova。
@@ -148,6 +159,8 @@ public class HookEntry extends XposedModule {
     private volatile Runnable mPendingBounce;
     private volatile long mPendingDelay = Long.MAX_VALUE;
     private volatile String mLastStateName = "";
+    /** 上一次的桌面状态名，用来识别「最近任务 -> 桌面」这种退出 */
+    private volatile String mPrevStateName = "";
     private volatile Object mStateManager;
 
     @Override
@@ -456,9 +469,11 @@ public class HookEntry extends XposedModule {
             return;
         }
         String name = args.get(0).getClass().getSimpleName();
+        String prev = mPrevStateName;
+        mPrevStateName = name;
         mLastStateName = name;
         if (DEBUG) {
-            log(Log.INFO, TAG, "state -> " + name);
+            log(Log.INFO, TAG, "state -> " + name + " (prev=" + prev + ")");
         }
         if (isOverviewStateName(name)) {
             armOverviewProbe();
@@ -469,11 +484,30 @@ public class HookEntry extends XposedModule {
             return;
         }
         if (isHomeStateName(name) && act != null && !act.isFinishing()) {
+            // 最近任务里点空白 / 再上滑一次：桌面从 Overview 退回 Normal，
+            // 这条路径没有手势令牌，单独按「有没有从最近任务回来」接走。
+            if (isOverviewStateName(prev) && isRecentsExitInterceptOn(act)) {
+                long cardAt = RecentsAppInfo.lastCardDownAt();
+                if (cardAt > 0L && SystemClock.uptimeMillis() - cardAt < CARD_TAP_GUARD_MS) {
+                    log(Log.INFO, TAG, "skip recents->home bounce: task card tapped just now");
+                    return;
+                }
+                log(Log.INFO, TAG, "recents exit (" + prev + " -> " + name
+                        + "), bounce to target");
+                scheduleBounce(act, RECENTS_EXIT_DELAY_MS, "recents->home");
+                return;
+            }
             // 兜底：顶层 resumed 回调没来时再跳一次；但必须是真·上滑回桌面手势之后
             if (mPendingBounce == null && isHomeGestureFresh()) {
                 scheduleBounce(act, FALLBACK_DELAY_MS, "state=" + name + "+homeGesture");
             }
         }
+    }
+
+    /** 最近任务退出拦截的开关；每次读设置（5s 缓存），改完立刻生效 */
+    private boolean isRecentsExitInterceptOn(Activity act) {
+        refreshTargetIfStale(act);
+        return sRecentsExitToTarget;
     }
 
     private static final boolean PROBE_OVERVIEW = false;
@@ -832,6 +866,7 @@ public class HookEntry extends XposedModule {
         String pkg = null;
         String act = null;
         String warm = null;
+        String recentsExit = null;
         Cursor c = null;
         try {
             c = ctx.getContentResolver().query(Uri.parse(SETTINGS_URI), null, null, null, null);
@@ -839,6 +874,7 @@ public class HookEntry extends XposedModule {
                 int ip = c.getColumnIndex(SettingsProvider.COL_PKG);
                 int ia = c.getColumnIndex(SettingsProvider.COL_ACT);
                 int iw = c.getColumnIndex(SettingsProvider.COL_WARM);
+                int ir = c.getColumnIndex(SettingsProvider.COL_RECENTS_EXIT);
                 if (ip >= 0) {
                     pkg = c.getString(ip);
                 }
@@ -847,6 +883,9 @@ public class HookEntry extends XposedModule {
                 }
                 if (iw >= 0) {
                     warm = c.getString(iw);
+                }
+                if (ir >= 0) {
+                    recentsExit = c.getString(ir);
                 }
             }
         } catch (Throwable t) {
@@ -858,6 +897,9 @@ public class HookEntry extends XposedModule {
                 } catch (Throwable ignored) {
                 }
             }
+        }
+        if (recentsExit != null) {
+            sRecentsExitToTarget = !"0".equals(recentsExit.trim());
         }
         if (pkg == null || pkg.trim().isEmpty() || act == null || act.trim().isEmpty()) {
             if (DEBUG) {

@@ -43,6 +43,8 @@ public final class RecentsAppInfo {
     private static float sDownY;
     private static boolean sFired;
     private static int sSlop = -1;
+    /** 最近一次按在任务卡片上的时刻（uptimeMillis），用于区分「点卡片开应用」和「点空白回桌面」 */
+    private static volatile long sLastCardDownAt = 0L;
 
     private RecentsAppInfo() {
     }
@@ -57,6 +59,7 @@ public final class RecentsAppInfo {
         switch (action) {
             case MotionEvent.ACTION_DOWN: {
                 cancelPending();
+                sLastCardDownAt = SystemClock.uptimeMillis();
                 if (isOnHeaderButton(taskView, e.getX(), e.getY())) {
                     return false; // 分屏/锁定按钮照旧
                 }
@@ -117,6 +120,11 @@ public final class RecentsAppInfo {
             default:
                 return false;
         }
+    }
+
+    /** 最近一次点/长按任务卡片的时刻（uptimeMillis），0 表示还没点过 */
+    static long lastCardDownAt() {
+        return sLastCardDownAt;
     }
 
     private static void cancelPending() {
