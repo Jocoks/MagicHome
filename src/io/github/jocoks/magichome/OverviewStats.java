@@ -128,7 +128,7 @@ final class OverviewStats {
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
-        lp.bottomMargin = Math.max(0, dp(act, 56) - 20);   // 清理键下方、手势条上方，再下移 20px
+        lp.bottomMargin = Math.max(0, dp(act, 56) - 84);   // 清理键下方、贴着手势条上方
         try {
             root.addView(tv, lp);
         } catch (Throwable t) {
