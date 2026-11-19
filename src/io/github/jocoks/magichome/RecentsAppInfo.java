@@ -43,8 +43,12 @@ public final class RecentsAppInfo {
     private static float sDownY;
     private static boolean sFired;
     private static int sSlop = -1;
-    /** 最近一次按在任务卡片上的时刻（uptimeMillis），用于区分「点卡片开应用」和「点空白回桌面」 */
+    /** 最近一次「点了任务卡片」的时刻（uptimeMillis）：只有真·点按才记，滑掉卡片不记 */
     private static volatile long sLastCardDownAt = 0L;
+    private static long sDownAt = 0L;
+    private static boolean sMoved = false;
+    /** 点按判定：按下到抬起不超过这个时长，且位移不超过 touchSlop */
+    private static final long TAP_MAX_MS = 250L;
 
     private RecentsAppInfo() {
     }
@@ -59,7 +63,8 @@ public final class RecentsAppInfo {
         switch (action) {
             case MotionEvent.ACTION_DOWN: {
                 cancelPending();
-                sLastCardDownAt = SystemClock.uptimeMillis();
+                sDownAt = SystemClock.uptimeMillis();
+                sMoved = false;
                 if (isOnHeaderButton(taskView, e.getX(), e.getY())) {
                     return false; // 分屏/锁定按钮照旧
                 }
@@ -103,6 +108,7 @@ public final class RecentsAppInfo {
                     float dx = e.getX() - sDownX;
                     float dy = e.getY() - sDownY;
                     if (dx * dx + dy * dy > (float) sSlop * sSlop) {
+                        sMoved = true; // 有位移 = 在滑卡片，不是点按
                         cancelPending();
                     }
                 }
@@ -111,6 +117,14 @@ public final class RecentsAppInfo {
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL: {
                 boolean fired = sFired;
+                long upAt = SystemClock.uptimeMillis();
+                if (action == MotionEvent.ACTION_UP && !fired && !sMoved
+                        && sDownAt > 0 && upAt - sDownAt <= TAP_MAX_MS) {
+                    // 真·点按（比如点卡片开应用）才记，滑掉任务卡不记
+                    sLastCardDownAt = upAt;
+                }
+                sDownAt = 0L;
+                sMoved = false;
                 cancelPending();
                 sDownView = null;
                 sDownTask = null;
