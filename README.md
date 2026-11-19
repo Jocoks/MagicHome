@@ -20,6 +20,9 @@
 |---|---|---|
 | 手势终点（精确信号） | 荣耀桌面进程 `com.hihonor.android.launcher`（Quickstep 同进程） | 钩 `com.android.quickstep.GestureState#setEndTarget`：终点 `HOME` → 写入 1.2s 令牌；`RECENTS`/`LAST_TASK`/`NEW_TASK` → 清令牌。`Activity.onTopResumedActivityChanged(true)` 与 StateManager 兜底都必须带令牌才跳转，因此「开 App 动画」「快速切应用」不会再误触发 |
 | 桌面底部边缘上滑 | 同一进程 `TouchInterationManager#processGestureInputEvent` | 停在荣耀桌面时，从屏幕底部 240px 内快速上滑（≥220px、≤400ms）直接跳目标桌面。底部手势会被系统接管，Activity 只收到 DOWN 后 CANCEL，所以必须从手势管线取事件 |
+| 最近任务退出 / 按返回退出 | 同一进程 `StateManager#goToState` 与 `Activity.onTopResumedActivityChanged` | 两条路径：① `Overview → Normal` 说明用户没点卡片（点空白 / 再上滑）就离开最近任务；② 桌面从后台回到前台（应用根页面按返回 = `moveTaskToBack`）。都按 `BouncePolicy` 的结论起跳（50ms / 40ms），没退出最近任务就每 50ms 补试，最多 3 次 |
+| 上滑偏高 | 同一进程 `TouchInterationManager#processGestureInputEvent` | 结算前先看是不是「其实在进最近任务」：当前状态是 Overview，或 900ms 内刚进过 Overview（`wasOverviewRecently()`），就忽略这次上滑，避免把用户从最近任务弹到目标桌面 |
+| 最近任务运存 | 荣耀桌面 DecorView | 直接 `addView` 一行文字（不需要悬浮窗权限），每秒读 `ActivityManager.MemoryInfo`，离开最近任务自动移除 |
 | 预热 | 目标桌面的 exported ContentProvider | 开机后首次回桌面 +6s、以及每次上滑手势起手时，`acquireContentProviderClient` 静默拉起目标桌面进程（不显示界面），把冷启动的 0.3~0.5s 提前吃掉 |
 | 原生层 | `system_server` | 已删除：本机实测 home 手势走「任务置前」，不经过 `ATMS.startActivityAsUser*`，该层从未触发（详见第 9 节的历史结论） |
 
@@ -405,6 +408,50 @@ mCurrentFocus=... com.dsharnessmobile.shell/com.dsharnessmobile.shell.MainActivi
 
 安装方式同前（`sh build.sh` → 装 `build/MagicHome.apk`，LSPosed 作用域保持
 `com.hihonor.android.launcher`，改完 `am force-stop com.hihonor.android.launcher` 生效）。
+
+## 14. 2.7.2 / 2.7.5 最近任务退出、按返回退出也进目标桌面
+
+荣耀桌面离开最近任务时只会把自己切回 `NormalState`，既没有 HOME 手势令牌，
+`onTopResumedActivityChanged` 也不一定重发，所以「手势终点」那条路完全空转。
+现在补两条兜底，判定都放在 `feature/BouncePolicy`：
+
+1. **最近任务退出**（2.7.2）：`onLauncherStateChanged` 里记住上一次状态，若
+   `prev=HnOverviewState` 且当前是 home 状态，说明用户没点卡片就离开了最近任务
+   （点空白处 / 再上滑一次），按 `RECENTS_EXIT_DELAY_MS = 50` 起跳。
+   桌面还没真正退出最近任务时每 50ms 补试，最多 `RECENTS_EXIT_RETRIES = 3` 次，
+   超过就放弃（避免和用户抢屏幕）。
+2. **按返回退出**（2.7.5）：应用根页面按返回是 `moveTaskToBack`，system_server 直接把
+   home 任务置前，桌面状态一直是 `NormalState`（`goToState` 不会回调）。改成在
+   `onTopResumedActivityChanged(true)` 里看「桌面刚才是否真的在后台」：
+   `TOP_RESUMED_MIN_BG_MS = 200` 以上才算，再排除刚跳转过（`BOUNCE_DEDUPE_MS = 1200`）、
+   刚点过卡片（`CARD_TAP_GUARD_MS = 400`）、多窗口场景，才按
+   `TOP_RESUMED_FALLBACK_DELAY_MS = 40` 起跳。
+
+两条兜底与「最近任务」开关共用同一个设置项（`recents_exit`），设置页里一句话说明。
+
+## 15. 2.8.0 最近任务底部显示运存
+
+`ui/OverviewOverlay` 在进入最近任务时往荣耀桌面的 DecorView 里 `addView` 一行
+`TextView`（`gravity = BOTTOM | CENTER_HORIZONTAL`，`bottomMargin = dp(56) - 84`，
+白色 13sp + 淡投影，不设背景、不拦截触摸），离开最近任务时移除。
+
+数据每秒刷新一次：`ActivityManager.MemoryInfo` 的 `totalMem` / `availMem`，
+已用 = 总量 − 空闲。文案在 `feature/MemoryStats`，单位与百分比都在这里算好，
+界面层只负责显示。
+
+## 16. 2.9.1 上滑偏高不再误跳
+
+从桌面工作区快速上滑，如果滑得偏高，荣耀桌面会进最近任务（`HnOverviewState`）；
+以前 `handleHomeSwipeUp` 只判位移和速度，于是把用户弹到了目标桌面。
+
+问题在于时机：`goToState` 的钩子比 `StateManager.getState()` 早一拍，结算那一刻
+`getState()` 可能还是 `NormalState`。所以 `LauncherBridge` 在状态回调里记下
+`sLastOverviewAt`，`wasOverviewRecently()` 提供 900ms（`OVERVIEW_MEMORY_MS`）记忆，
+`SwipeTracker.evaluate()` 结算时「当前在最近任务」或「刚进过最近任务」就忽略这次上滑。
+
+注意：这个记忆**只给上滑路径用**，没有塞进 `isOverviewNow()`——那个方法同时被跳转后的
+补试 `Runnable` 使用，混进 900ms 记忆会让「最近任务 → 桌面」的跳转被误判成
+「还在最近任务」而反复补试或直接放弃。
 
 ## 图标
 
