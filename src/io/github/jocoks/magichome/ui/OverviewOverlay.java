@@ -1,12 +1,10 @@
-package io.github.jocoks.magichome;
+package io.github.jocoks.magichome.ui;
 
 import android.app.Activity;
-import android.app.ActivityManager;
 import android.content.Context;
 import android.graphics.Color;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -15,18 +13,18 @@ import android.widget.FrameLayout;
 import android.widget.TextView;
 
 import java.lang.ref.WeakReference;
-import java.util.Locale;
+
+import io.github.jocoks.magichome.feature.Logs;
+import io.github.jocoks.magichome.feature.MemoryStats;
 
 /**
- * 最近任务界面里的一行运存文字：总运存 / 空闲 / 已用百分比。
+ * 交互层：最近任务底部那行运存文字。
  *
- * <p>只有文字、没有背景框；位置在清理键下方。文字颜色在显示时按该区域的实际背景亮度
- * 自动选黑或白（把桌面窗口按 1/4 缩略画一遍再取平均亮度），所以浅色壁纸用黑字、
- * 深色壁纸用白字。数据每 1 秒从 {@link ActivityManager.MemoryInfo} 实时读取。
+ * 只有文字、没有背景框；直接挂到桌面 Activity 的 DecorView 上（不需要悬浮窗权限）。
+ * 数据与文案来自功能层 {@link MemoryStats}，这里只管视图与刷新节奏。
  */
-final class OverviewStats {
+public final class OverviewOverlay {
 
-    private static final String TAG = "MagicHome";
     private static final long REFRESH_MS = 1000L;
 
     private static WeakReference<Activity> sActivity = new WeakReference<>(null);
@@ -44,16 +42,16 @@ final class OverviewStats {
             try {
                 bind();
             } catch (Throwable t) {
-                Log.w(TAG, "stats refresh failed: " + t);
+                Logs.w("stats refresh failed: " + t);
             }
             sHandler.postDelayed(this, REFRESH_MS);
         }
     };
 
-    private OverviewStats() {
+    private OverviewOverlay() {
     }
 
-    static void show(final Activity act) {
+    public static void show(final Activity act) {
         if (act == null) {
             return;
         }
@@ -72,13 +70,13 @@ final class OverviewStats {
                     sHandler.removeCallbacks(REFRESH);
                     sHandler.postDelayed(REFRESH, REFRESH_MS);
                 } catch (Throwable t) {
-                    Log.w(TAG, "stats show failed: " + t);
+                    Logs.w("stats show failed: " + t);
                 }
             }
         });
     }
 
-    static void hide() {
+    public static void hide() {
         if (!sVisible) {
             return;
         }
@@ -110,7 +108,7 @@ final class OverviewStats {
                 root = (ViewGroup) decor;
             }
         } catch (Throwable t) {
-            Log.w(TAG, "decor view unavailable: " + t);
+            Logs.w("decor view unavailable: " + t);
         }
         if (root == null) {
             return null;
@@ -122,7 +120,7 @@ final class OverviewStats {
         tv.setClickable(false);
         tv.setFocusable(false);
         tv.setShadowLayer(dp(act, 4), 0f, dp(act, 1.5f), 0x99000000);
-        tv.setText(statsText(act));
+        tv.setText(MemoryStats.text(act));
 
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -132,7 +130,7 @@ final class OverviewStats {
         try {
             root.addView(tv, lp);
         } catch (Throwable t) {
-            Log.w(TAG, "add stats view failed: " + t);
+            Logs.w("add stats view failed: " + t);
             try {
                 root.addView(tv);
             } catch (Throwable t2) {
@@ -140,7 +138,7 @@ final class OverviewStats {
             }
         }
         sView = new WeakReference<>(tv);
-        Log.i(TAG, "overview stats view attached");
+        Logs.i("overview stats view attached");
         return tv;
     }
 
@@ -149,44 +147,7 @@ final class OverviewStats {
         if (tv == null) {
             return;
         }
-        tv.setText(statsText(tv.getContext()));
-    }
-
-    private static String statsText(Context ctx) {
-        long total = 0L;
-        long avail = 0L;
-        try {
-            ActivityManager am = (ActivityManager) ctx.getSystemService(Context.ACTIVITY_SERVICE);
-            if (am != null) {
-                ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
-                am.getMemoryInfo(mi);      // 每次刷新都重新读，实时值
-                total = mi.totalMem;
-                avail = mi.availMem;
-            }
-        } catch (Throwable t) {
-            Log.w(TAG, "read memory info failed: " + t);
-        }
-        if (total <= 0L) {
-            return "运存信息不可用";
-        }
-        if (avail < 0L) {
-            avail = 0L;
-        }
-        if (avail > total) {
-            avail = total;
-        }
-        long used = total - avail;
-        int pct = (int) Math.round(used * 100.0 / total);
-        return String.format(Locale.US, "运存 %s · 空闲 %s · 已用 %d%%",
-                gb(total), gb(avail), pct);
-    }
-
-    private static String gb(long bytes) {
-        double gb = bytes / 1024.0 / 1024.0 / 1024.0;
-        if (gb >= 1.0) {
-            return String.format(Locale.US, "%.1f GB", gb);
-        }
-        return String.format(Locale.US, "%.0f MB", bytes / 1024.0 / 1024.0);
+        tv.setText(MemoryStats.text(tv.getContext()));
     }
 
     private static int dp(Context ctx, float value) {

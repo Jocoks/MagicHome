@@ -1,5 +1,7 @@
-package io.github.jocoks.magichome;
+package io.github.jocoks.magichome.ui;
 
+import io.github.jocoks.magichome.feature.Constants;
+import io.github.jocoks.magichome.feature.SettingsContract;
 import android.content.ComponentName;
 import android.content.ContentProvider;
 import android.content.ContentValues;
@@ -22,20 +24,15 @@ import android.net.Uri;
  */
 public class SettingsProvider extends ContentProvider {
 
-    public static final String AUTHORITY = "io.github.jocoks.magichome.settings";
-    public static final String URI_TARGET = "content://" + AUTHORITY + "/target";
+    private static final String PREFS = SettingsContract.PREFS;
+    private static final String KEY_TARGET = SettingsContract.KEY_TARGET;
+    private static final String KEY_RECENTS_EXIT = SettingsContract.KEY_RECENTS_EXIT;
+    private static final String COL_PKG = SettingsContract.COL_PKG;
+    private static final String COL_ACT = SettingsContract.COL_ACT;
+    private static final String COL_WARM = SettingsContract.COL_WARM;
+    private static final String COL_RECENTS_EXIT = SettingsContract.COL_RECENTS_EXIT;
 
-    public static final String COL_PKG = "target_pkg";
-    public static final String COL_ACT = "target_act";
-    public static final String COL_WARM = "warm_authority";
-    /** 最近任务里点空白 / 再上滑一次时，也跳到目标桌面（"1" 开 / "0" 关） */
-    public static final String COL_RECENTS_EXIT = "recents_exit";
-
-    public static final String PREFS = "magichome";
-    public static final String KEY_TARGET = "target_pkg";
-    public static final String KEY_RECENTS_EXIT = "recents_exit";
-
-    public static final String DEFAULT_PKG = "com.teslacoilsw.launcher";
+    private static final String DEFAULT_PKG = Constants.DEFAULT_TARGET_PKG;
     private static final String DEFAULT_WARM_AUTHORITY = "com.teslacoilsw.launcher.api";
 
     @Override

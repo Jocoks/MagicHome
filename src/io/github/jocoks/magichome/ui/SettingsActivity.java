@@ -1,5 +1,6 @@
-package io.github.jocoks.magichome;
+package io.github.jocoks.magichome.ui;
 
+import io.github.jocoks.magichome.feature.SettingsContract;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -58,8 +59,8 @@ public class SettingsActivity extends Activity {
         mInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         mInput.setSingleLine(true);
         mInput.setHint("com.teslacoilsw.launcher");
-        SharedPreferences sp = getSharedPreferences(SettingsProvider.PREFS, MODE_PRIVATE);
-        mInput.setText(sp.getString(SettingsProvider.KEY_TARGET, ""));
+        SharedPreferences sp = getSharedPreferences(SettingsContract.PREFS, MODE_PRIVATE);
+        mInput.setText(sp.getString(SettingsContract.KEY_TARGET, ""));
         root.addView(mInput, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -77,9 +78,9 @@ public class SettingsActivity extends Activity {
         Switch recentsExit = new Switch(this);
         recentsExit.setText("最近任务点空白 / 再上滑一次 / 按返回退出应用，也进入目标桌面");
         recentsExit.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        recentsExit.setChecked(sp.getBoolean(SettingsProvider.KEY_RECENTS_EXIT, true));
+        recentsExit.setChecked(sp.getBoolean(SettingsContract.KEY_RECENTS_EXIT, true));
         recentsExit.setOnCheckedChangeListener((b, checked) -> sp.edit()
-                .putBoolean(SettingsProvider.KEY_RECENTS_EXIT, checked).apply());
+                .putBoolean(SettingsContract.KEY_RECENTS_EXIT, checked).apply());
         root.addView(recentsExit);
 
         TextView recentsHint = new TextView(this);
@@ -165,8 +166,8 @@ public class SettingsActivity extends Activity {
             Toast.makeText(this, "没找到该包名的桌面组件：\n" + pkg, Toast.LENGTH_LONG).show();
             return;
         }
-        getSharedPreferences(SettingsProvider.PREFS, MODE_PRIVATE)
-                .edit().putString(SettingsProvider.KEY_TARGET, pkg).apply();
+        getSharedPreferences(SettingsContract.PREFS, MODE_PRIVATE)
+                .edit().putString(SettingsContract.KEY_TARGET, pkg).apply();
         Toast.makeText(this, "已保存：" + pkg + "\n回桌面后上滑即生效", Toast.LENGTH_LONG).show();
         finish();
     }

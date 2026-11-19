@@ -21,7 +21,7 @@
 | 手势终点（精确信号） | 荣耀桌面进程 `com.hihonor.android.launcher`（Quickstep 同进程） | 钩 `com.android.quickstep.GestureState#setEndTarget`：终点 `HOME` → 写入 1.2s 令牌；`RECENTS`/`LAST_TASK`/`NEW_TASK` → 清令牌。`Activity.onTopResumedActivityChanged(true)` 与 StateManager 兜底都必须带令牌才跳转，因此「开 App 动画」「快速切应用」不会再误触发 |
 | 桌面底部边缘上滑 | 同一进程 `TouchInterationManager#processGestureInputEvent` | 停在荣耀桌面时，从屏幕底部 240px 内快速上滑（≥220px、≤400ms）直接跳目标桌面。底部手势会被系统接管，Activity 只收到 DOWN 后 CANCEL，所以必须从手势管线取事件 |
 | 预热 | 目标桌面的 exported ContentProvider | 开机后首次回桌面 +6s、以及每次上滑手势起手时，`acquireContentProviderClient` 静默拉起目标桌面进程（不显示界面），把冷启动的 0.3~0.5s 提前吃掉 |
-| 原生层 | `system_server` | HOME intent 改写层保留但**默认关闭**（`ENABLE_SYSTEM_SERVER_LAYER=false`）：本机实测 home 手势走「任务置前」，不经过 `ATMS.startActivityAsUser*`，该层不会触发 |
+| 原生层 | `system_server` | 已删除：本机实测 home 手势走「任务置前」，不经过 `ATMS.startActivityAsUser*`，该层从未触发（详见第 9 节的历史结论） |
 
 ### 踩过的坑（重要，改代码前先读）
 
@@ -54,9 +54,23 @@ magichome/
 ├── AndroidManifest.xml          # 包名 io.github.jocoks.magichome
 ├── build.sh                     # 设备内构建（无需 Android Studio）
 ├── src/io/github/jocoks/magichome/
-│   ├── HookEntry.java           # 主逻辑（Quickstep 钩子 / 令牌 / 边缘上滑 / 预热）
-│   ├── SettingsActivity.java    # 设置页：指定目标桌面包名（纯代码 UI，无 res）
-│   └── SettingsProvider.java    # 给 HookEntry 提供配置（authority io.github.jocoks.magichome.settings）
+│   ├── HookEntry.java           # 交互层入口：装钩子，把系统回调转给 ui
+│   ├── feature/                 # 功能层（纯逻辑，不碰 View / 钩子）
+│   │   ├── Constants.java       # 日志标签、被钩的桌面包名、默认目标桌面
+│   │   ├── LauncherState.java   # 状态名判定（Overview / Home / Background）
+│   │   ├── GestureRules.java    # 上滑与点按的阈值判定
+│   │   ├── BouncePolicy.java    # 跳不跳 / 延迟多久 / 为什么（三个入口共用）
+│   │   ├── TargetLauncher.java  # 目标桌面解析、跳转 Intent、5s 缓存
+│   │   ├── SettingsContract.java# 设置键名与 provider URI
+│   │   ├── MemoryStats.java     # 运存读取与文案
+│   │   └── Logs.java            # 日志出口（接到 LSPosed 模块日志）
+│   └── ui/                      # 交互层（Activity / View / 触摸 / 状态机）
+│       ├── LauncherBridge.java  # 桌面运行时：状态回调、跳转调度、预热
+│       ├── SwipeTracker.java    # 上滑跟踪（Activity 触摸 + 手势管线共用）
+│       ├── RecentsTouchHandler.java # 最近任务卡片：长按开应用信息、点按计时
+│       ├── OverviewOverlay.java # 最近任务底部运存文字
+│       ├── SettingsActivity.java# 设置页：指定目标桌面包名（纯代码 UI）
+│       └── SettingsProvider.java# 给钩子侧提供配置（authority ...settings）
 ├── meta/META-INF/xposed/
 │   ├── module.prop              # minApiVersion=102 / targetApiVersion=102
 │   ├── scope.list               # 荣耀桌面两个包名 + android（预留层）
@@ -160,6 +174,8 @@ kill -9 $(pidof com.hihonor.android.launcher)
 
 | 版本 | 变更 |
 |---|---|
+| 2.9.1 | **上滑偏高不再误跳**：从桌面快速上滑本来是「进最近任务」，以前只判位移/速度就跳目标桌面；现在上滑结算时若已经/刚刚进入最近任务（状态机回调比 `getState()` 早一拍，用 900ms 记忆兜住）就忽略这次上滑 |
+| 2.9.0 | **代码重构（行为不变）**：按功能层 / 交互层拆开——判定规则（手势、跳转、状态、目标桌面、运存文案）集中在 `feature/`，和 Activity / View / 触摸 / 钩子打交道的部分集中在 `ui/`；删掉 system_server 改写、探针等从未启用的死代码 |
 | 2.8.1 | **滑掉最后一个后台任务也进目标桌面**：卡片点按守卫原来只看「按下」，滑动手势也被误判成点卡片而跳过跳转；改成只在「按下→抬起 ≤ 250ms 且位移不超过 touchSlop」的真点按时才记，滑动删除不再误伤 |
 | 2.8.0 | **最近任务底部显示运存**：纯文字一行（总量 / 空闲 / 已用百分比），固定白色 + 淡投影，位于清理键下方贴近手势条，每秒从 `ActivityManager.MemoryInfo` 实时刷新，离开最近任务自动隐藏 |
 | 2.7.6 | **LSPosed 模块列表补上说明**：新 API 模块的说明取自 `application` 的 `android:description`（管理器不读 `module.prop`），补上字符串资源 |
@@ -354,7 +370,7 @@ grep -E "target launcher =|bounced ->" /data/adb/lspd/log/modules_*.log | tail
 机主最初要的是「卡片顶栏放个应用信息按钮」，2.5.0 做完后反馈「图标太丑」，于是改成
 **长按卡片**触发（2.6.0 起不再注入任何按钮视图）。
 
-实现（`RecentsAppInfo.java` + `HookEntry.armRecentsLongPressHook`）：
+实现（`ui/RecentsTouchHandler.java` + `HookEntry.hookRecentsLongPress`）：
 
 1. **手势识别**：钩 `com.android.quickstep.views.TaskView#dispatchTouchEvent`（回退
    `BaseTaskView`）。DOWN 记录坐标/时间并用 `Handler` 起一个 460ms 的定时器；
@@ -389,9 +405,6 @@ mCurrentFocus=... com.dsharnessmobile.shell/com.dsharnessmobile.shell.MainActivi
 
 安装方式同前（`sh build.sh` → 装 `build/MagicHome.apk`，LSPosed 作用域保持
 `com.hihonor.android.launcher`，改完 `am force-stop com.hihonor.android.launcher` 生效）。
-
-> `Probe.java` 的视图树探测默认关闭（`HookEntry.PROBE_OVERVIEW=false`）：
-> 一次打几百行 `Log.i` 会让最近任务界面明显卡顿，排查时临时打开、看完就关。
 
 ## 图标
 
