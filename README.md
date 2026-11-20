@@ -15,6 +15,7 @@
 | 上滑回桌面 | `GestureState#setEndTarget` | 终点 `HOME` 才写 1.2s 令牌，`onTopResumedActivityChanged(true)` 带令牌才跳；`RECENTS`/`LAST_TASK` 清令牌 |
 | 桌面底部边缘上滑 | `TouchInterationManager#processGestureInputEvent` | 停在桌面时，底部 240px 内快速上滑（≥220px、≤400ms）直接跳目标桌面 |
 | 最近任务退出 / 按返回退出 | `StateManager#goToState` + `onTopResumedActivityChanged` | ① `Overview → Normal`（点空白 / 再上滑）② 桌面从后台回前台（应用根页面按返回）。都由 `BouncePolicy` 判定，50ms / 40ms 起跳，没退出最近任务就补试 3 次 |
+| 长按最近任务卡片 | `TaskView#dispatchTouchEvent` | 原地按住 460ms（不移动、不落在分屏/锁按钮上）→ 振动反馈 → 打开该应用的「应用信息」页；点按/滑动不受影响 |
 | 上滑偏高 | 同手势管线 | 结算时若当前在最近任务、或 900ms 内刚进过（`wasOverviewRecently()`），忽略这次上滑 |
 | 最近任务运存 | 桌面 DecorView | `addView` 一行文字（不需悬浮窗权限），每秒读 `ActivityManager.MemoryInfo`，离开自动移除 |
 | 预热 | 目标桌面导出的 ContentProvider | 开机首次回桌面 +6s、每次上滑起手时静默拉起目标桌面进程，吃掉冷启动等待 |
@@ -70,7 +71,7 @@ apksigner sign --ks tools/debug.keystore --ks-pass pass:android --ks-key-alias a
 1. 安装 APK。
 2. LSPosed 管理器 → 模块 → 启用 **MagicHome**，作用域勾选 `com.hihonor.android.launcher`（可选 `com.hihonor.hnofficelauncher`）。
 3. `am force-stop com.hihonor.android.launcher` 让新配置生效（不用重启手机）。
-4. 打开设置页，选择或输入目标桌面包名并保存。
+4. 打开设置页：选目标桌面（会列出已安装的桌面）、开关「最近任务退出」、看响应速度提示。
 
 ## 5. 验证
 
