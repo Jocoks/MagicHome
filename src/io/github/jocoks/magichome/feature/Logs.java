@@ -8,8 +8,8 @@ package io.github.jocoks.magichome.feature;
  */
 public final class Logs {
 
-    /** 是否输出调试日志（和原来的 DEBUG 开关等价） */
-    public static final boolean DEBUG = true;
+    /** 调试日志开关，由设置页控制（默认关） */
+    private static volatile boolean sDebug = false;
 
     public interface Sink {
         void log(int priority, String tag, String msg, Throwable tr);
@@ -24,13 +24,25 @@ public final class Logs {
         sSink = sink;
     }
 
-    public static void i(String msg) {
-        emit(android.util.Log.INFO, msg, null);
+    /** 设置页打开/关闭调试日志（钩子侧每次读设置时同步） */
+    public static void setDebug(boolean on) {
+        sDebug = on;
     }
 
-    /** 只在 DEBUG 下输出 */
+    public static boolean isDebug() {
+        return sDebug;
+    }
+
+    /** 过程日志：只有打开调试日志才输出 */
+    public static void i(String msg) {
+        if (sDebug) {
+            emit(android.util.Log.INFO, msg, null);
+        }
+    }
+
+    /** 更细的过程日志：同样受调试开关控制 */
     public static void d(String msg) {
-        if (DEBUG) {
+        if (sDebug) {
             emit(android.util.Log.INFO, msg, null);
         }
     }

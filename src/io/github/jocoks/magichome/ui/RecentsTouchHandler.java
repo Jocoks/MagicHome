@@ -45,6 +45,8 @@ public final class RecentsTouchHandler {
 
     private static long sDownAt = 0L;
     private static boolean sMoved = false;
+    /** 这次按下起手在卡片顶栏按钮（分屏/锁定）上：不算「点卡片开应用」 */
+    private static boolean sOnHeader = false;
     /** 最近一次「真·点按任务卡片」的时刻（uptimeMillis） */
     private static volatile long sLastCardTapAt = 0L;
 
@@ -81,8 +83,9 @@ public final class RecentsTouchHandler {
         cancelPending();
         sDownAt = SystemClock.uptimeMillis();
         sMoved = false;
-        if (isOnHeaderButton(taskView, e.getX(), e.getY())) {
-            return false; // 分屏/锁定按钮照旧
+        sOnHeader = isOnHeaderButton(taskView, e.getX(), e.getY());
+        if (sOnHeader) {
+            return false; // 分屏/锁定按钮照旧交给桌面
         }
         if (sSlop < 0) {
             sSlop = ViewConfiguration.get(taskView.getContext()).getScaledTouchSlop();
@@ -136,12 +139,19 @@ public final class RecentsTouchHandler {
         boolean fired = sFired;
         long upAt = SystemClock.uptimeMillis();
         if (action == MotionEvent.ACTION_UP
+                && !sOnHeader
                 && GestureRules.isTap(sMoved, sDownAt, upAt)) {
-            // 真·点按（比如点卡片开应用）才记，滑掉任务卡不记
+            // 真·点按（比如点卡片开应用）才记：滑掉任务卡不记，
+            // 顶栏的分屏/锁定按钮也不算（点它之后桌面会自己退出最近任务）
             sLastCardTapAt = upAt;
+            Logs.d("[tap] card tapped (" + (upAt - sDownAt) + "ms) at "
+                    + (int) e.getX() + "," + (int) e.getY());
+        } else if (sOnHeader && action == MotionEvent.ACTION_UP) {
+            Logs.d("[tap] header button, not a card tap");
         }
         sDownAt = 0L;
         sMoved = false;
+        sOnHeader = false;
         cancelPending();
         sDownView = null;
         sDownTask = null;

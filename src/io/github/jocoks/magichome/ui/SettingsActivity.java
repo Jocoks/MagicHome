@@ -133,6 +133,28 @@ public class SettingsActivity extends Activity {
             }
         }
 
+        TextView debugTitle = new TextView(this);
+        debugTitle.setText("排查");
+        debugTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        debugTitle.setPadding(0, dp(14), 0, dp(4));
+        root.addView(debugTitle);
+
+        Switch debugLog = new Switch(this);
+        debugLog.setText("调试日志（默认关闭）");
+        debugLog.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        debugLog.setChecked(sp.getBoolean(SettingsContract.KEY_DEBUG_LOG, false));
+        debugLog.setOnCheckedChangeListener((b, checked) -> sp.edit()
+                .putBoolean(SettingsContract.KEY_DEBUG_LOG, checked).apply());
+        root.addView(debugLog);
+
+        TextView debugHint = new TextView(this);
+        debugHint.setText("打开后会把每次判定写进 LSPosed 日志，用于排查问题；"
+                + "平时关掉更安静。切换后约 5 秒生效（回到桌面操作一次即可）。");
+        debugHint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        debugHint.setTextColor(Color.DKGRAY);
+        debugHint.setPadding(0, 0, 0, 0);
+        root.addView(debugHint);
+
         setContentView(root);
     }
 

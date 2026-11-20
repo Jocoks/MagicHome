@@ -6,6 +6,7 @@ import android.content.ComponentName;
 import android.content.ContentProvider;
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
@@ -31,6 +32,8 @@ public class SettingsProvider extends ContentProvider {
     private static final String COL_ACT = SettingsContract.COL_ACT;
     private static final String COL_WARM = SettingsContract.COL_WARM;
     private static final String COL_RECENTS_EXIT = SettingsContract.COL_RECENTS_EXIT;
+    private static final String KEY_DEBUG_LOG = SettingsContract.KEY_DEBUG_LOG;
+    private static final String COL_DEBUG_LOG = SettingsContract.COL_DEBUG_LOG;
 
     private static final String DEFAULT_PKG = Constants.DEFAULT_TARGET_PKG;
     private static final String DEFAULT_WARM_AUTHORITY = "com.teslacoilsw.launcher.api";
@@ -62,13 +65,15 @@ public class SettingsProvider extends ContentProvider {
             warm = warmAuthority(ctx, pkg);
         }
         boolean recentsExit = true;
+        boolean debugLog = false;
         if (ctx != null) {
-            recentsExit = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                    .getBoolean(KEY_RECENTS_EXIT, true);
+            SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            recentsExit = sp.getBoolean(KEY_RECENTS_EXIT, true);
+            debugLog = sp.getBoolean(KEY_DEBUG_LOG, false);
         }
         MatrixCursor c = new MatrixCursor(
-                new String[]{COL_PKG, COL_ACT, COL_WARM, COL_RECENTS_EXIT});
-        c.addRow(new Object[]{pkg, act, warm, recentsExit ? "1" : "0"});
+                new String[]{COL_PKG, COL_ACT, COL_WARM, COL_RECENTS_EXIT, COL_DEBUG_LOG});
+        c.addRow(new Object[]{pkg, act, warm, recentsExit ? "1" : "0", debugLog ? "1" : "0"});
         return c;
     }
 

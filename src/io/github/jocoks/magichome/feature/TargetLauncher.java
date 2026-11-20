@@ -66,6 +66,7 @@ public final class TargetLauncher {
         String act = null;
         String warm = null;
         String recentsExit = null;
+        String debugLog = null;
         Cursor c = null;
         try {
             c = ctx.getContentResolver().query(SettingsContract.TARGET_URI, null, null, null, null);
@@ -74,6 +75,7 @@ public final class TargetLauncher {
                 int ia = c.getColumnIndex(SettingsContract.COL_ACT);
                 int iw = c.getColumnIndex(SettingsContract.COL_WARM);
                 int ir = c.getColumnIndex(SettingsContract.COL_RECENTS_EXIT);
+                int id = c.getColumnIndex(SettingsContract.COL_DEBUG_LOG);
                 if (ip >= 0) {
                     pkg = c.getString(ip);
                 }
@@ -85,6 +87,9 @@ public final class TargetLauncher {
                 }
                 if (ir >= 0) {
                     recentsExit = c.getString(ir);
+                }
+                if (id >= 0) {
+                    debugLog = c.getString(id);
                 }
             }
         } catch (Throwable t) {
@@ -99,6 +104,9 @@ public final class TargetLauncher {
         }
         if (recentsExit != null) {
             sRecentsExit = !"0".equals(recentsExit.trim());
+        }
+        if (debugLog != null) {
+            Logs.setDebug(!"0".equals(debugLog.trim()));
         }
         if (pkg == null || pkg.trim().isEmpty() || act == null || act.trim().isEmpty()) {
             Logs.i("target launcher not configured, using " + Constants.DEFAULT_TARGET_PKG);

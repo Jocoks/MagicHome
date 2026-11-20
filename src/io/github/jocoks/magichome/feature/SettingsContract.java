@@ -19,11 +19,14 @@ public final class SettingsContract {
     public static final String KEY_TARGET = "target_pkg";
     /** 最近任务退出拦截开关（默认开） */
     public static final String KEY_RECENTS_EXIT = "recents_exit";
+    /** 调试日志开关（默认关） */
+    public static final String KEY_DEBUG_LOG = "debug_log";
 
     public static final String COL_PKG = "target_pkg";
     public static final String COL_ACT = "target_act";
     public static final String COL_WARM = "warm_authority";
     public static final String COL_RECENTS_EXIT = "recents_exit";
+    public static final String COL_DEBUG_LOG = "debug_log";
 
     private SettingsContract() {
     }

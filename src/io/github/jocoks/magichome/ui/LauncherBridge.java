@@ -1,10 +1,13 @@
 package io.github.jocoks.magichome.ui;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.ContentProviderClient;
 import android.content.ContentResolver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -46,6 +49,9 @@ public final class LauncherBridge {
     private static volatile long sLastOverviewAt = 0L;
     /** 上一次的桌面状态名，用来识别「最近任务 -> 桌面」这种退出 */
     private static volatile String sPrevStateName = "";
+    /** 最近一次解锁的时刻（ACTION_USER_PRESENT），用于忽略解锁时漏进来的假点按 */
+    private static volatile long sUserPresentAt = 0L;
+    private static volatile boolean sScreenWatcherInstalled = false;
 
     private static volatile Object sStateManager;
     private static Method sAppsVisibleMethod;
@@ -64,8 +70,54 @@ public final class LauncherBridge {
     /** Activity.onResume：记下当前桌面，顺带安排一次开机预热 */
     public static void onLauncherResumed(Activity act) {
         sCurrentLauncherAct = act;
+        installScreenWatcher(act);
         maybeBootWarm(act);
         Logs.d("home resumed (state=" + currentStateName(act) + ")");
+    }
+
+    /** 监听解锁事件：锁屏时漏给桌面的那次上滑不能当成「点了卡片」 */
+    private static void installScreenWatcher(final Activity act) {
+        if (sScreenWatcherInstalled) {
+            return;
+        }
+        try {
+            IntentFilter f = new IntentFilter();
+            f.addAction(Intent.ACTION_USER_PRESENT);
+            f.addAction(Intent.ACTION_SCREEN_OFF);
+            act.getApplicationContext().registerReceiver(new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context ctx, Intent intent) {
+                    String action = intent == null ? null : intent.getAction();
+                    if (Intent.ACTION_USER_PRESENT.equals(action)) {
+                        sUserPresentAt = SystemClock.uptimeMillis();
+                        Logs.i("user present (unlock), state=" + sLastStateName);
+                    } else if (Intent.ACTION_SCREEN_OFF.equals(action)) {
+                        Logs.d("screen off, state=" + sLastStateName);
+                    }
+                }
+            }, f);
+            sScreenWatcherInstalled = true;
+            Logs.i("screen watcher installed");
+        } catch (Throwable t) {
+            Logs.w("screen watcher failed: " + t);
+        }
+    }
+
+    /**
+     * 交给规则层的「距上次点卡片多久」。解锁后一小段时间内当作没点过，
+     * 因为解锁上滑会被系统漏给下面的桌面，随手就是一次假点按。
+     */
+    private static long cardTapAgeForRules(long now) {
+        long age = RecentsTouchHandler.cardTapAge(now);
+        if (age < 0L) {
+            return age;
+        }
+        long sinceUnlock = sUserPresentAt > 0L ? now - sUserPresentAt : -1L;
+        if (sinceUnlock >= 0L && sinceUnlock < BouncePolicy.UNLOCK_TAP_GRACE_MS) {
+            Logs.i("ignore card-tap guard: unlocked " + sinceUnlock + "ms ago");
+            return -1L;
+        }
+        return age;
     }
 
     /** Activity.onTopResumedActivityChanged */
@@ -90,7 +142,7 @@ public final class LauncherBridge {
                 isHomeGestureFresh(),
                 lostAt > 0L ? now - lostAt : -1L,
                 sLastBouncedAt > 0L ? now - sLastBouncedAt : -1L,
-                RecentsTouchHandler.cardTapAge(now),
+                cardTapAgeForRules(now),
                 isInMultiWindow(act),
                 recentsExitSwitch(act));
         apply(act, decision);
@@ -142,7 +194,7 @@ public final class LauncherBridge {
                 sPendingBounce != null,
                 isHomeGestureFresh(),
                 fromOverview ? recentsExitSwitch(act) : NEVER_ON,
-                RecentsTouchHandler.cardTapAge(SystemClock.uptimeMillis()),
+                cardTapAgeForRules(SystemClock.uptimeMillis()),
                 name);
         if (decision != null && decision.bounce) {
             Logs.i("recents exit (" + prev + " -> " + name + "), bounce to target");
@@ -163,7 +215,8 @@ public final class LauncherBridge {
             return;
         }
         sCurrentLauncherAct = act;
-        scheduleBounce(act, decision.delayMs, decision.reason, decision.retries);
+        scheduleBounce(act, decision.delayMs, decision.reason, decision.retries,
+                decision.focusRetries);
     }
 
     // ------------------------------------------------------------------
@@ -171,10 +224,15 @@ public final class LauncherBridge {
     // ------------------------------------------------------------------
 
     public static void scheduleBounce(Activity act, long delayMs, String why) {
-        scheduleBounce(act, delayMs, why, 0);
+        scheduleBounce(act, delayMs, why, 0, BouncePolicy.FOCUS_RETRIES);
     }
 
     public static void scheduleBounce(Activity act, long delayMs, String why, final int retries) {
+        scheduleBounce(act, delayMs, why, retries, BouncePolicy.FOCUS_RETRIES);
+    }
+
+    public static void scheduleBounce(Activity act, long delayMs, String why, final int retries,
+                                      final int focusRetries) {
         sCurrentLauncherAct = act;
         if (sPendingBounce != null) {
             if (delayMs >= sPendingDelay) {
@@ -201,14 +259,23 @@ public final class LauncherBridge {
                         if (retries > 0) {
                             Logs.i("overview still showing, retry bounce (" + retries + " left)");
                             scheduleBounce(target, BouncePolicy.RECENTS_EXIT_DELAY_MS, reason,
-                                    retries - 1);
+                                    retries - 1, focusRetries);
                         } else {
                             Logs.i("skip bounce: overview showing");
                         }
                         return;
                     }
                     if (!target.hasWindowFocus()) {
-                        Logs.i("skip bounce: home not focused (probably opening an app)");
+                        // 桌面还没拿到焦点：可能是真的在开应用，也可能是刚从锁屏解锁
+                        // （钥匙串界面还没退干净）。等一会儿再看，开应用时这个待跳会被取消。
+                        if (focusRetries > 0) {
+                            Logs.i("home not focused yet, retry bounce (" + focusRetries
+                                    + " left)");
+                            scheduleBounce(target, BouncePolicy.FOCUS_RETRY_MS, reason, retries,
+                                    focusRetries - 1);
+                        } else {
+                            Logs.i("skip bounce: home not focused (probably opening an app)");
+                        }
                         return;
                     }
                     bounceToTarget(target);
