@@ -70,6 +70,15 @@ public final class BouncePolicy {
      */
     public static final long OVERVIEW_MEMORY_MS = 900L;
 
+    /** 状态机回调比 getState() 新：这段时间内以回调记录的状态为准 */
+    public static final long STATE_TRUST_MS = 1500L;
+
+    /** 解锁后多久之内，把「因为锁屏没有焦点而放弃的跳转」补上 */
+    public static final long UNLOCK_BOUNCE_WINDOW_MS = 15000L;
+
+    /** 补跳前的等待，等解锁动画退干净 */
+    public static final long UNLOCK_BOUNCE_DELAY_MS = 80L;
+
     /** 开机静默预热：避开开机/解锁高峰 */
     public static final long BOOT_WARM_DELAY_MS = 6000L;
     /** 只有开机后这个时间窗内才做一次开机预热 */

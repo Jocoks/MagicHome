@@ -45,6 +45,10 @@ public final class LauncherBridge {
     private static volatile long sPendingDelay = Long.MAX_VALUE;
 
     private static volatile String sLastStateName = "";
+    /** sLastStateName 的记录时刻；状态机回调比 getState() 新，用它判新旧 */
+    private static volatile long sLastStateAt = 0L;
+    /** 因为桌面没有焦点（锁屏/解锁动画）而放弃的那次跳转，解锁后补上 */
+    private static volatile long sLostBounceAt = 0L;
     /** 最近一次进入最近任务的时间（uptimeMillis），用于「上滑偏高」的判定 */
     private static volatile long sLastOverviewAt = 0L;
     /** 上一次的桌面状态名，用来识别「最近任务 -> 桌面」这种退出 */
@@ -54,6 +58,8 @@ public final class LauncherBridge {
     private static volatile boolean sScreenWatcherInstalled = false;
 
     private static volatile Object sStateManager;
+    /** sStateManager 属于哪个 Activity 实例；换主题/桌面重启后会变，必须重新找 */
+    private static volatile Activity sStateOwner;
     private static Method sAppsVisibleMethod;
     private static Method sDisplayAppsMethod;
 
@@ -91,6 +97,7 @@ public final class LauncherBridge {
                     if (Intent.ACTION_USER_PRESENT.equals(action)) {
                         sUserPresentAt = SystemClock.uptimeMillis();
                         Logs.i("user present (unlock), state=" + sLastStateName);
+                        maybeBounceAfterUnlock();
                     } else if (Intent.ACTION_SCREEN_OFF.equals(action)) {
                         Logs.d("screen off, state=" + sLastStateName);
                     }
@@ -133,7 +140,7 @@ public final class LauncherBridge {
         }
         long lostAt = sTopLostAt;
         sTopLostAt = 0L;
-        if (isOverviewNow(act)) {
+        if (LauncherState.isOverview(effectiveStateName(act))) {
             Logs.i("topResumed but overview, skip");
             return;
         }
@@ -168,6 +175,7 @@ public final class LauncherBridge {
         String prev = sPrevStateName;
         sPrevStateName = name;
         sLastStateName = name;
+        sLastStateAt = SystemClock.uptimeMillis();
         Logs.d("state -> " + name + " (prev=" + prev + ")");
 
         boolean overview = LauncherState.isOverview(name);
@@ -258,7 +266,33 @@ public final class LauncherBridge {
                     // 慢速上滑时桌面会先进「应用退到后台」的过渡状态，这时候跳过去
                     // 会把正在展开的最近任务打断；等它落到 Normal 再决定，落到 Overview 就放过。
                     if (!isHomeGestureFresh()) {
-                        String st = currentStateName(target);
+                        String st = effectiveStateName(target);
+                        if (LauncherState.isOverview(st)) {
+                            // 还在最近任务里（换主题后 getState() 会撒谎，这里以状态机
+                            // 回调为准），跳过去就会打断正在展开的后台任务。
+                            if (retries > 0) {
+                                Logs.i("overview still showing (state=" + st
+                                        + "), retry bounce (" + retries + " left)");
+                                scheduleBounce(target, BouncePolicy.FOCUS_RETRY_MS, reason,
+                                        retries - 1, focusRetries);
+                            } else {
+                                Logs.i("skip bounce: overview showing (state=" + st + ")");
+                            }
+                            return;
+                        }
+                        if (st == null || st.length() == 0) {
+                            // 读不到桌面状态（刚换主题/桌面重启，状态机还没建好）：
+                            // 宁可等，也不要盲跳打断正在展开的最近任务。
+                            if (retries > 0) {
+                                Logs.i("launcher state unknown, retry bounce ("
+                                        + retries + " left)");
+                                scheduleBounce(target, BouncePolicy.FOCUS_RETRY_MS, reason,
+                                        retries - 1, focusRetries);
+                            } else {
+                                Logs.i("skip bounce: launcher state unknown");
+                            }
+                            return;
+                        }
                         if (!LauncherState.isHome(st)) {
                             if (retries > 0) {
                                 Logs.i("launcher still in " + st + ", retry bounce ("
@@ -291,6 +325,7 @@ public final class LauncherBridge {
                                     focusRetries - 1);
                         } else {
                             Logs.i("skip bounce: home not focused (probably opening an app)");
+                            sLostBounceAt = SystemClock.uptimeMillis();
                         }
                         return;
                     }
@@ -504,22 +539,86 @@ public final class LauncherBridge {
         return t > 0L && SystemClock.uptimeMillis() - t <= BouncePolicy.OVERVIEW_MEMORY_MS;
     }
 
+    /**
+     * 判断用的桌面状态：状态机回调（goToState）比 getState() 新。
+     * 换主题 / 桌面重启后 getState() 会返回上一次的旧状态（日志里就是
+     * HnOverviewState 已经进去了、getState() 还说 NormalState），所以要优先用回调。
+     */
+    private static String effectiveStateName(Activity act) {
+        long at = sLastStateAt;
+        String hooked = sLastStateName;
+        if (at > 0L && hooked != null && hooked.length() > 0
+                && SystemClock.uptimeMillis() - at <= BouncePolicy.STATE_TRUST_MS) {
+            return hooked;
+        }
+        return currentStateName(act);
+    }
+
+    /** 在最近任务里锁屏 → 解锁：把当时因为没焦点而放弃的跳转补上 */
+    private static void maybeBounceAfterUnlock() {
+        final long lostAt = sLostBounceAt;
+        if (lostAt <= 0L) {
+            return;
+        }
+        if (SystemClock.uptimeMillis() - lostAt > BouncePolicy.UNLOCK_BOUNCE_WINDOW_MS) {
+            sLostBounceAt = 0L;
+            return;
+        }
+        sLostBounceAt = 0L;
+        final Activity act = sCurrentLauncherAct;
+        if (act == null || act.isFinishing() || act.isDestroyed()) {
+            return;
+        }
+        sHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (act.isFinishing() || act.isDestroyed() || !act.hasWindowFocus()) {
+                        Logs.i("skip unlock bounce: home not in front");
+                        return;
+                    }
+                    String st = effectiveStateName(act);
+                    if (!LauncherState.isHome(st)) {
+                        Logs.i("skip unlock bounce: state=" + st);
+                        return;
+                    }
+                    if (!recentsExitSwitch(act).isOn()) {
+                        Logs.i("skip unlock bounce: recents-exit switch off");
+                        return;
+                    }
+                    Logs.i("unlock bounce (skipped earlier because locked), state=" + st);
+                    bounceToTarget(act);
+                } catch (Throwable t) {
+                    Logs.e("unlock bounce failed", t);
+                }
+            }
+        }, BouncePolicy.UNLOCK_BOUNCE_DELAY_MS);
+    }
+
     /** 桌面当前状态名（读不到就退回最近一次 goToState 记录的名字） */
     public static String currentStateName(Activity act) {
         try {
             Object sm = sStateManager;
-            if (sm == null) {
+            // 桌面换主题、崩溃重启后会换一个 Activity 实例和一套新的 StateManager，
+            // 旧的 StateManager 还活着但状态永远停在最后那一刻，拿它判断等于闭着眼跳。
+            if (sm == null || sStateOwner != act || act.isFinishing() || act.isDestroyed()) {
                 sm = findStateManager(act);
                 sStateManager = sm;
+                sStateOwner = sm == null ? null : act;
+                if (sm == null) {
+                    Logs.w("state manager not found on " + act.getClass().getSimpleName());
+                }
             }
             if (sm == null) {
-                return sLastStateName;
+                return "";
             }
             Method getState = sm.getClass().getMethod("getState");
             Object state = getState.invoke(sm);
-            return state == null ? sLastStateName : state.getClass().getSimpleName();
+            return state == null ? "" : state.getClass().getSimpleName();
         } catch (Throwable t) {
-            return sLastStateName;
+            sStateManager = null;
+            sStateOwner = null;
+            return "";
         }
     }
 
