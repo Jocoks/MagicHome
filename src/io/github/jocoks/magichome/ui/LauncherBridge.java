@@ -255,6 +255,22 @@ public final class LauncherBridge {
                         Logs.i("skip bounce: activity gone");
                         return;
                     }
+                    // 慢速上滑时桌面会先进「应用退到后台」的过渡状态，这时候跳过去
+                    // 会把正在展开的最近任务打断；等它落到 Normal 再决定，落到 Overview 就放过。
+                    if (!isHomeGestureFresh()) {
+                        String st = currentStateName(target);
+                        if (!LauncherState.isHome(st)) {
+                            if (retries > 0) {
+                                Logs.i("launcher still in " + st + ", retry bounce ("
+                                        + retries + " left)");
+                                scheduleBounce(target, BouncePolicy.FOCUS_RETRY_MS, reason,
+                                        retries - 1, focusRetries);
+                            } else {
+                                Logs.i("skip bounce: launcher stayed in " + st);
+                            }
+                            return;
+                        }
+                    }
                     if (isOverviewNow(target)) {
                         if (retries > 0) {
                             Logs.i("overview still showing, retry bounce (" + retries + " left)");

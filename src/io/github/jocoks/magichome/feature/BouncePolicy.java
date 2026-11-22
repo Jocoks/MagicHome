@@ -55,6 +55,8 @@ public final class BouncePolicy {
     public static final long TOP_RESUMED_FALLBACK_DELAY_MS = 40L;
     /** 桌面至少离开前台这么久，才算「从后台回来」（排除转场抖动） */
     public static final long TOP_RESUMED_MIN_BG_MS = 200L;
+    /** 「桌面从后台回来」时多等几拍：慢速上滑会先停在过渡状态，等它落定再决定 */
+    public static final int TOP_RESUMED_RETRIES = 4;
     /** 刚跳过一次就不要再跳，避免来回抖 */
     public static final long BOUNCE_DEDUPE_MS = 1200L;
 
@@ -157,7 +159,8 @@ public final class BouncePolicy {
         if (!intercept.isOn()) {
             return Decision.skip("topResumed from background, skip: switch off");
         }
-        return Decision.bounce(TOP_RESUMED_FALLBACK_DELAY_MS, "topResumed-from-bg", 0);
+        return Decision.bounce(TOP_RESUMED_FALLBACK_DELAY_MS, "topResumed-from-bg",
+                TOP_RESUMED_RETRIES);
     }
 
     /**
