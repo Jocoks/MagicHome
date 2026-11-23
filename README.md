@@ -1,5 +1,10 @@
 # MagicHome · 让荣耀的上滑回桌面进入第三方桌面
 
+> **使用声明**
+>
+> 本项目仅供个人在自己设备上备份、修改自己拥有的主题包，以及学习文件格式。
+> 禁止在国内社交平台宣传、推荐、引流本项目，包括但不限于：B 站、抖音、快手、贴吧、酷安、小红书、微博、知乎、微信公众号/视频号。
+
 荣耀 MagicOS 不允许把第三方桌面设为默认桌面，「上滑回桌面」在系统内部是**把荣耀桌面任务置前**，
 不是发 HOME intent，所以改默认桌面、改 intent 都没用。
 
@@ -10,7 +15,7 @@
 
 - **上滑就进你的桌面**：App 内上滑回桌面、桌面底部边缘快速上滑，都进目标桌面；进最近任务、切应用不误跳。
 - **离开应用/最近任务也进**：最近任务点空白、再上滑，或从 App 按返回键退出，都进目标桌面（设置页可关）。
-- **最近任务增强**：底部显示运存占用；长按卡片进该应用的「应用信息」页。
+- **最近任务增强**：底部显示运存占用；长按卡片进「应用信息」页。
 - **目标桌面随便换**：设置页列出已装桌面，点选或输入包名，几秒生效。
 - **冷启动预热**：回桌面前静默拉起目标桌面进程。
 
@@ -23,19 +28,19 @@
 | 上滑回桌面 | `GestureState#setEndTarget` | 终点 `HOME` 才写 1.2s 令牌，`onTopResumedActivityChanged(true)` 带令牌才跳；`RECENTS`/`LAST_TASK` 清令牌 |
 | 桌面底部边缘上滑 | `TouchInterationManager#processGestureInputEvent` | 停在桌面时，底部 240px 内快速上滑（≥220px、≤400ms）直接跳目标桌面 |
 | 最近任务退出 / 按返回退出 | `StateManager#goToState` + `onTopResumedActivityChanged` | ① `Overview → Normal`（点空白 / 再上滑）② 桌面从后台回前台（应用根页面按返回）。都由 `BouncePolicy` 判定，50ms / 40ms 起跳，没退出最近任务就补试 3 次 |
-| 长按最近任务卡片 | `TaskView#dispatchTouchEvent` | 原地按住 460ms（不移动、不落在分屏/锁按钮上）→ 振动反馈 → 打开该应用的「应用信息」页；点按/滑动不受影响 |
-| 上滑偏高 | 同手势管线 | 结算时若当前在最近任务、或 900ms 内刚进过（`wasOverviewRecently()`），忽略这次上滑 |
-| 最近任务运存 | 桌面 DecorView | `addView` 一行文字（不需悬浮窗权限），每秒读 `ActivityManager.MemoryInfo`，离开自动移除 |
-| 预热 | 目标桌面导出的 ContentProvider | 开机首次回桌面 +6s、每次上滑起手时静默拉起目标桌面进程，吃掉冷启动等待 |
+| 长按最近任务卡片 | `TaskView#dispatchTouchEvent` | 原地按住 460ms（不移动、不落在分屏/锁按钮上）→ 振动反馈 → 打开「应用信息」页；点按/滑动不受影响 |
+| 上滑偏高 | 同手势管线 | 结算时若当前在最近任务、或 900ms 内刚进过（`wasOverviewRecently()`），该手势直接忽略 |
+| 最近任务运存 | 桌面 DecorView | `addView` 文字（不需悬浮窗权限），每秒读 `ActivityManager.MemoryInfo`，离开自动移除 |
+| 预热 | 目标桌面导出的 ContentProvider | 开机首次回桌面 +6s、上滑起手时静默拉起目标桌面进程，吃掉冷启动等待 |
 
 ### 踩过的坑
 
-1. **不能用 `CATEGORY_HOME + NEW_TASK` 拉目标桌面**：系统会把它当成第二个 home 任务塞进 home 根任务，
+1. **不能用 `CATEGORY_HOME + NEW_TASK` 拉目标桌面**：系统会把它当多余 home 任务塞进 home 根任务，
    表现为「最近任务卡死，只能上滑退出」。现在用普通任务启动（`NEW_TASK|CLEAR_TOP|EXCLUDE_FROM_RECENTS`）。
 2. **不能凭 `onResume` 就跳**：上滑回桌面和上滑进最近任务都会让桌面 resume，无脑跳会把最近任务顶掉。
 3. **不能凭 `onPause` 判断离开前台**：Quickstep 会手动调 `onPause`（系统事件里并没有真 pause）。
 4. **跳转要等转场动画结束**：转场中途拉起目标桌面，系统约 0.4s 后会把荣耀桌面重新置前（闪一下退回）。
-5. **resume 时状态可能已经是 `NormalState`**：这时 `goToState` 不再回调，必须在 resume 里主动读一次状态。
+5. **resume 时状态可能已经是 `NormalState`**：这时 `goToState` 不再回调，必须在 resume 里主动读状态。
 6. **只支持 libxposed 新 API**：`io.github.libxposed:api:102.0.0`，模块格式 `META-INF/xposed/{module.prop,scope.list,java_init.list}`。
 
 ## 2. 目录
